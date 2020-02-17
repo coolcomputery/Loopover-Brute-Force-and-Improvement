@@ -1,583 +1,511 @@
-/*
-every scramble of a full board is represented by an int array, usually called locs[],
-such that locs[i]=the location of tile i in the scrambled board
-every location on a RxC board that is on row r and column c is represented with the integer r*C+c
-*/
 import java.util.*;
 public class LoopoverBruteForce {
-    private static int mod(int n, int k) {
-        int out=n%k;
-        if (out<0)
-            out+=k;
-        return out;
+    private static int[][] binnedCodes(Tree t, int mind) {
+        int[][] codes=new int[t.maxdepth()+1][];
+        for (int d=mind; d<=t.maxdepth(); d++) {
+            int[] a=new int[t.nperms()];
+            int sz=0;
+            for (int c=0; c<t.nperms(); c++)
+                if (t.depth(c)==d) {
+                    a[sz]=c;
+                    sz++;
+                }
+            codes[d]=new int[sz];
+            System.arraycopy(a,0,codes[d],0,sz);
+        }
+        return codes;
     }
-    //keep scramble as mapping of number->location
-    private static void move(int[] locs, int R, int C, Move mv) {
-        if (mv.horz) {
-            for (int i=0; i<locs.length; i++) {
-                int r=locs[i]/C;
-                if (r==mod(mv.coord,R))
-                    locs[i]=r*C+mod(locs[i]%C+mv.shift,C);
-            }
+    private static int[][] scrambleActions(Tree t, int[][] codes, int mind) {
+        int[][] scrambleActions=new int[t.nperms()][];
+        for (int d=t.maxdepth(); d>=mind; d--)
+            for (int c:codes[d])
+                scrambleActions[c]=t.scrambleAction(c);
+        return scrambleActions;
+    }
+    private static void move(int R, int C, int[] perm, int[] mv) {
+        if(mv[0]==0) {
+            int[] tmp=new int[C];
+            for (int i=0; i<C; i++)
+                tmp[i]=perm[mv[1]*C+i];
+            for (int i=0; i<C; i++)
+                perm[mv[1]*C+mod(i+mv[2],C)]=tmp[i];
         }
         else {
-            for (int i=0; i<locs.length; i++) {
-                int c=locs[i]%C;
-                if (c==mod(mv.coord,C))
-                    locs[i]=mod(locs[i]/C+mv.shift,R)*C+c;
-            }
+            int[] tmp=new int[R];
+            for (int i=0; i<R; i++)
+                tmp[i]=perm[i*C+mv[1]];
+            for (int i=0; i<R; i++)
+                perm[mod(i+mv[2],R)*C+mv[1]]=tmp[i];
         }
     }
-    private static void move(int[] locs, int R, int C, ArrayList<Move> mvs) {
-        for (Move mv:mvs)
-            move(locs,R,C,mv);
-    }
-    private static void transform(int[] locs, int[] scrambleAction) {
-        //locs is current scramble, scrambleAction is operation that will change locs (kind of like composing permutations but slightly different)
-        for (int i=0; i<locs.length; i++)
-            locs[i]=scrambleAction[locs[i]];
-    }
-    private static int transd(int loc, int R, int C, int tr, int tc) {
+    private static int transloc(int R, int C, int loc, int tr, int tc) {
         return mod(loc/C+tr,R)*C+mod(loc%C+tc,C);
     }
-    private static void print(int[] scramble, int C) {
-        int[] perm=new int[scramble.length];
-        for (int i=0; i<scramble.length; i++)
+    private static String str(int R, int C, int[] scramble) {
+        int[] perm=new int[R*C];
+        for (int i=0; i<R*C; i++)
             perm[scramble[i]]=i;
-        for (int i = 0; i < C; i++) {
-            for (int j = 0; j < C; j++)
-                System.out.printf("%4d", perm[i * C + j]);
-            System.out.println();
+        StringBuilder str=new StringBuilder();
+        for (int i=0; i<R; i++) {
+            for (int j=0; j<C; j++)
+                str.append(String.format("%3d",perm[i*C+j]));
+            str.append("\n");
         }
+        return str.toString();
     }
-    /*
-    takes two trees, enumerates all scrambles that lead to a solution of length >=D,
-    and tries solving each scramble by building the block starting from a different location
-    */
-    private static void improve(Tree[] trees, int D) {
+    private static String permStr(int R, int C, int[] perm) {
+        StringBuilder str=new StringBuilder();
+        for (int i=0; i<R; i++) {
+            for (int j=0; j<C; j++)
+                str.append(String.format("%3d",perm[i*C+j]));
+            str.append("\n");
+        }
+        return str.toString();
+    }
+    private static void improve(int R, int C, int[] wr0, int[] wc0, int[] wr1, int[] wc1, int depth, boolean check, boolean show) {
+        /*
+        creates two BFS trees for solving two subsets of the RxC loopover,
+            which gives every RxC loopover permutation an upper bound on the # of moves it takes to solve it,
+            then takes every permutation with an upper bound >=depth and solves a translated version of it to obtain a bound <depth
+            (exploiting translational symmetry of loopover)
+        */
+        /*
+        set check to true if you want the program to check for correctness, false otherwise
+        set show to true if you want the program to show each scramble it tries
+         */
         long st=System.currentTimeMillis();
-        int N=trees[0].R;
-        ArrayList<int[]> depthSets=new ArrayList<>();
-        for (int d0 = trees[0].levelCnt-1; d0>-1; d0--)
-            for (int d1 = trees[1].levelCnt-1; d1>-1 && d0+d1>=D; d1--) {
-                depthSets.add(new int[]{d0, d1});
-            }
-        //express sequences of moves as permutation operators to speed up performing a predetermined sequence of moves on a scramble
-        //save these operators in a table to avoid recomputing them
-        int[][][] scrambleActions=new int[trees.length][][];
-        int[][][] codesAtDepth=new int[trees.length][][];
-        for (int stage=0; stage<trees.length; stage++) {
-            ArrayList<ArrayList<Integer>> codeByDepth=new ArrayList<>();
-            for (int i=0; i<trees[stage].levelCnt; i++)
-                codeByDepth.add(new ArrayList<>());
-            boolean[] usedDepth=new boolean[trees[stage].levelCnt];
-            for (int[] set:depthSets)
-                usedDepth[set[stage]]=true;
-            for (int code=0; code<trees[stage].permsAmt; code++) {
-                if (trees[stage].improved[code])
-                    continue;
-                int depth=trees[stage].depth(code);
-                if (usedDepth[depth])
-                    codeByDepth.get(depth).add(code);
-            }
-            codesAtDepth[stage]=new int[trees[stage].levelCnt][];
-            for (int depth=0; depth<trees[stage].levelCnt; depth++) {
-                codesAtDepth[stage][depth]=new int[codeByDepth.get(depth).size()];
-                for (int i=0; i<codeByDepth.get(depth).size(); i++)
-                    codesAtDepth[stage][depth][i]=codeByDepth.get(depth).get(i);
-            }
-        }
-        long tot=0;
-        for (int[] set:depthSets) {
-            long prod=1;
-            for (int stage=0; stage<set.length; stage++)
-                prod*=codesAtDepth[stage][set[stage]].length;
-            tot+=prod;
-        }
-        System.out.println("tot="+tot);
-        for (int stage=0; stage<trees.length; stage++) {
-            boolean[] triedDepth=new boolean[trees[stage].levelCnt+1];
-            scrambleActions[stage]=new int[trees[stage].permsAmt][];
-            for (int[] set:depthSets) {
-                int depth=set[stage];
-                if (triedDepth[depth])
-                    continue;
-                for (int code:codesAtDepth[stage][depth]) {
-                    //System.out.println("scramble="+Arrays.toString(trees[stage].scramble(code)));
-                    ArrayList<Move> mvs=trees[stage].solution(code);
-                    int[] scramble = new int[N * N];
-                    for (int i = 0; i < scramble.length; i++)
-                        scramble[i] = i;
-                    move(scramble, N, N, Move.inv(mvs));
-                    //System.out.println("full scramble="+Arrays.toString(scramble));
-                    scrambleActions[stage][code]=scramble;
-                }
-                triedDepth[depth]=true;
-            }
-        }
-        int[][][] tree0_shiftedSolutions=new int[trees[0].permsAmt][N*N][];
-        System.out.println(System.currentTimeMillis()-st+" ms (depthSets initialisation)");
+        Tree t0=new Tree(R,C,new int[0], new int[0], wr0, wc0),
+                t1=new Tree(R,C,wr0,wc0,wr1,wc1);
+        System.out.println("bfs time="+(System.currentTimeMillis()-st));
+        //improve depth of all scrambles with (their naive # mvs to solve)>=depth
         st=System.currentTimeMillis();
-        int n_maxdepth=0;
-        double depth_toprint=700_000;
-        long scrambleCnt=0;
-        int used=0;
-        System.out.printf("%15s%25s%9s%n","scrambles done","shifted transforms used","ms");
-        for (int[] set:depthSets) {
-            int[] tree0_codes=codesAtDepth[0][set[0]], tree1_codes=codesAtDepth[1][set[1]];
-            for (int code0:tree0_codes) {
-                for (int code1:tree1_codes) {
-                    int[] scramble=scrambleActions[1][code1];
-                    transform(scramble,scrambleActions[0][code0]);
-                    int bdepth=Integer.MAX_VALUE;
-                    for (int ti=1; ti<N*N; ti++) {
-                        int tr=ti/N, tc=ti%N;
-                        int[] tscramble=scramble.clone();
-                        int totdepth=0;
-                        int[] wanted_locs=trees[0].wanted_locs;
-                        int[] nsc=new int[wanted_locs.length];
-                        for (int i=0; i<wanted_locs.length; i++)
-                            nsc[i] = transd(tscramble[transd(wanted_locs[i],N,N,tr,tc)],N,N,-tr,-tc);
-                        int nsc_code=trees[0].code(nsc);
-                        totdepth+=trees[0].depth(nsc_code);
-                        if (totdepth+trees[1].levelCnt-1<=D-1)
-                            //skip early in this case
-                            totdepth+=trees[1].levelCnt-1;
-                        else {
-                            if (tree0_shiftedSolutions[nsc_code][ti]==null) {
-                                ArrayList<Move> mvs = trees[0].solution(nsc_code);
-                                for (int i = 0; i < mvs.size(); i++)
-                                    mvs.set(i, mvs.get(i).transd(tr, tc));
-                                int[] tmp = new int[N * N];
-                                for (int i = 0; i < tmp.length; i++)
-                                    tmp[i] = i;
-                                move(tmp, N, N, mvs);
-                                //System.out.println("full scramble="+Arrays.toString(scramble));
-                                tree0_shiftedSolutions[nsc_code][ti]=tmp;
-                                used++;
-                            }
-                            //move(tscramble,N,N,mvs);
-                            transform(tscramble,tree0_shiftedSolutions[nsc_code][ti]);
-                            wanted_locs=trees[1].wanted_locs;
-                            nsc=new int[wanted_locs.length];
-                            for (int i=0; i<wanted_locs.length; i++)
-                                nsc[i] = transd(tscramble[transd(wanted_locs[i],N,N,tr,tc)],N,N,-tr,-tc);
-                            totdepth+=trees[1].depth(trees[1].code(nsc));
+        int mind0=depth-t1.maxdepth(), mind1=depth-t0.maxdepth();
+        int[][] codes0=binnedCodes(t0,mind0),
+                codes1=binnedCodes(t1,mind1);
+        int[][] sa0=scrambleActions(t0,codes0,mind0),
+                sa1=scrambleActions(t1,codes1,mind1);
+        int[][] solve0=new int[t0.nperms()][];
+        long tot=0;
+        for (int d0=t0.maxdepth(); d0>=mind0; d0--)
+            for (int d1=t1.maxdepth(); d1>=depth-d0; d1--)
+                tot+=(long)codes0[d0].length*codes1[d1].length;
+        System.out.println("tot="+tot);
+        int[][] transloc=new int[R*C][R*C];
+        for (int ti=0; ti<R*C; ti++)
+            for (int l=0; l<R*C; l++)
+                transloc[ti][l]=transloc(R,C,l,ti/C,ti%C);
+        int[] inv_ti=new int[R*C];
+        for (int ti=0; ti<R*C; ti++)
+            inv_ti[ti]=mod(-(ti/C),R)*C+mod(-(ti%C),C);
+        System.out.println("initialization time="+(System.currentTimeMillis()-st));
+        long cnt=0;
+        double mark=1000_000;
+        int maxd=0;
+        String form="%20d%20d%n";
+        System.out.printf("%20s%20s%n","# improved","time");
+        st=System.currentTimeMillis();
+        for (int d0=mind0; d0<=t0.maxdepth(); d0++)
+            for (int d1=depth-d0; d1<=t1.maxdepth(); d1++)
+                for (int c0:codes0[d0])
+                    for (int c1:codes1[d1]) {
+                        int[] scramble=new int[R*C];
+                        for (int i=0; i<R*C; i++)
+                            scramble[i]=sa0[c0][sa1[c1][i]];
+                        if (show) {
+                            System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
+                            System.out.println("mvs0=" + t0.bwd_mvids(c0) + ",mvs1=" + t1.bwd_mvids(c1));
                         }
-                        if (totdepth<bdepth) {
-                            bdepth=totdepth;
-                            if (bdepth<=D-1)
-                                //only necessary to improve it down to D-1 moves since other scrambles of initial depth D-1 won't be improved anyway
+                        int bestd=Integer.MAX_VALUE;
+                        for (int ti=1; ti<R*C; ti++) {
+                            /*
+                            solving scramble with Tree t but with the wanted blocks translated by (tr,tc)
+                                is the same as solving tscr with t normally, then translating the resulting moves by (tr,tc)
+                                where tscr is defined as tscr[i]=transloc(R,C,scramble[transloc(R,C,i,tr,tc)],-tr,-tc)
+                                and transloc(R,C,l,tr,tc) transforms location l by +tr rows and +tc columns
+                                    the location l refers to row # l/C, column # l%C
+                            NOTE: do not actually create array tscr; only refer to it implicitly when constructing subscr0
+                                this will reduce running time
+                             */
+                            int tr=ti/C, tc=ti%C;
+                            int totd=0;
+                            int[] subscr0=new int[t0.wcnt];
+                            for (int i=0; i<t0.wcnt; i++)
+                                subscr0[i]=transloc[inv_ti[ti]][scramble[transloc[ti][t0.id_wloc[i]]]];
+                            int code0=t0.subscramble_code(subscr0), code1=-1;
+                            boolean skip=false;
+                            if (t0.depth(code0)+t1.maxdepth()<depth) {
+                                totd = depth - 1;
+                                skip=true;
+                            }
+                            else {
+                                if (solve0[code0] == null)
+                                    solve0[code0]=t0.solveAction(code0);
+                                //now tscr[i]=solve0[code][transloc(R,C,scramble[transloc(R,C,i,tr,tc)],-tr,-tc)];
+                                //again, do not create tscr; only refer to it implicitly when constructing subscr1
+                                totd+=t0.depth(code0);
+                                int[] subscr1=new int[t1.wcnt];
+                                for (int i=0; i<t1.wcnt; i++)
+                                    subscr1[i]=solve0[code0][transloc[inv_ti[ti]][scramble[transloc[ti][t1.id_wloc[i]]]]];
+                                code1=t1.subscramble_code(subscr1);
+                                totd+=t1.depth(code1);
+                            }
+                            if (check && totd<depth) {
+                                if (show)
+                                    System.out.println("translation=("+tr+","+tc+")");
+                                List<int[]> scrA=t0.scrambleMvs(code0), solveA=new ArrayList<>();
+                                int[] perm=new int[R*C];
+                                for (int i=0; i<R*C; i++)
+                                    perm[scramble[i]]=i;
+                                for (int i=scrA.size()-1; i>-1; i--) {
+                                    int[] mv=inv(scrA.get(i));
+                                    int[] tmv=mv[0]==0?new int[] {0,mod(mv[1]+tr,R),mv[2]}:
+                                            new int[] {1,mod(mv[1]+tc,C),mv[2]};
+                                    move(R, C, perm, tmv);
+                                    solveA.add(tmv);
+                                }
+                                int[] tscramble=new int[R*C];
+                                for (int i=0; i<R*C; i++)
+                                    tscramble[perm[i]]=i;
+                                boolean good=true;
+                                for (int i=0; i<R*C; i++)
+                                    if (t0.soonLocked(transloc(R,C,i,-tr,-tc)) && tscramble[i]!=i) {
+                                        good=false;
+                                        break;
+                                    }
+                                if (!good || show) {
+                                    System.out.print((good?"":"NOT SOLVED: \n")+"mvs for solving 1st block=");
+                                    for (int[] mv:solveA)
+                                        System.out.print(Arrays.toString(mv)+" ");
+                                    System.out.println("\n"+permStr(R, C, perm));
+                                    if (!show)
+                                        System.out.println("translation=("+tr+","+tc+")");
+                                    if (!good)
+                                        return;
+                                }
+                                if (!skip) {
+                                    List<int[]> scrB = t1.scrambleMvs(code1), solveB=new ArrayList<>();
+                                    for (int i = scrB.size() - 1; i > -1; i--) {
+                                        int[] mv = inv(scrB.get(i));
+                                        int[] tmv = mv[0] == 0 ? new int[]{0, mod(mv[1] + tr, R), mv[2]} :
+                                                new int[]{1, mod(mv[1] + tc, C), mv[2]};
+                                        move(R, C, perm, tmv);
+                                        solveB.add(tmv);
+                                    }
+                                    boolean solved = true;
+                                    for (int i = 0; i < R * C; i++)
+                                        if (perm[i] != i) {
+                                            solved = false;
+                                            break;
+                                        }
+                                    if (!solved || show) {
+                                        if (!solved)
+                                            System.out.println("NOT SOLVED");
+                                        if (!show) {
+                                            System.out.print("mvs for solving 1st block=");
+                                            for (int[] mv : solveA)
+                                                System.out.print(Arrays.toString(mv) + " ");
+                                            System.out.println();
+                                        }
+                                        System.out.print("mvs for solving 2nd block=");
+                                        for (int[] mv:solveB)
+                                            System.out.print(Arrays.toString(mv)+" ");
+                                        System.out.println("\n"+permStr(R, C, perm));
+                                        if (!show)
+                                            System.out.println("translation=("+tr+","+tc+")");
+                                        if (!solved)
+                                            return;
+                                    }
+                                }
+                            }
+                            bestd=Math.min(bestd,totd);
+                            if (bestd<depth)
                                 break;
                         }
-                    }
-                    n_maxdepth=Math.max(n_maxdepth,bdepth);
-                    if (bdepth==D) {
-                        System.out.println("NOT IMPROVED:");
-                        print(scramble,N);
-                    }
-                    scrambleCnt++;
-                    if (scrambleCnt>=depth_toprint) {
-                        System.out.printf("%15d%25d%9d%n",scrambleCnt,used,(System.currentTimeMillis()-st));
-                        depth_toprint*=1.5;
-                    }
-                }
-            }
-        }
-        System.out.println(System.currentTimeMillis()-st+" ms (improving 2 trees)");
-        System.out.println(scrambleCnt+" scrambles of depth>="+D+" are now depth<="+n_maxdepth);
-    }
-    //eliminates all permutations that can be avoided by solving an offset set of tiles in fewer moves
-    private static void improve(Tree tree, int D) {
-        long st=System.currentTimeMillis();
-        //ONLY WORKS IF TREE DESCRIBES BUILDING A SOLVED REGION FROM NO SOLVED REGION
-        //take all perms with depth >=D and remove those that can be avoided by building translated of themselves that have smaller depth
-        boolean[] code_improved=new boolean[tree.permsAmt];
-        int R=tree.R, C=tree.C;
-        if (tree.spaces!=R*C)
-            throw new RuntimeException("Invalid tree.");
-        System.out.println("improving "+tree.rowDo+";"+tree.colDo);
-        boolean[] WANTED=new boolean[R*C];
-        for (int loc:tree.wanted_locs)
-            WANTED[loc]=true;
-        int[] trans_uniques=new int[R*C];
-        int[][] transd_wanted_locs_table=new int[R*C][];
-        for (int i=0; i<R*C; i++) {
-            int tr=i/C, tc=i%C;
-            int unique=0;
-            int[] transd=new int[tree.wcnt];
-            for (int j=0; j<transd.length; j++)
-                transd[j]=transd(tree.wanted_locs[j],R,C,tr,tc);
-            transd_wanted_locs_table[i]=transd;
-            for (int loc:tree.wanted_locs)
-                if (!WANTED[transd(loc,R,C,tr,tc)])
-                    unique++;
-            trans_uniques[i]=unique;
-        }
-        Integer[] sorted_trans=new Integer[R*C-1];
-        for (int i=1; i<R*C; i++)
-            sorted_trans[i-1]=i;
-        Arrays.sort(sorted_trans, new Comparator<Integer>() {
-            @Override
-            public int compare(Integer o1, Integer o2) {
-                return trans_uniques[o1]-trans_uniques[o2];
-            }
-        });
-        double reps_toprint=1000;
-        for (int code=0, reps=0; code<tree.permsAmt; code++) {
-            if (tree.depth(code)<D)
-                continue;
-            int[] oldScramble=tree.scramble(code);
-            int[] pc_loc=new int[R*C];
-            for (int i=0; i<R*C; i++)
-                pc_loc[i]=-1;
-            for (int i=0; i< oldScramble.length; i++)
-                pc_loc[tree.wanted_locs[i]]=oldScramble[i];
-            boolean[] occupied=new boolean[R*C];
-            for (int loc:oldScramble)
-                occupied[loc]=true;
-            int spacesLeft=tree.spaces-tree.wcnt;
-            int[] id_locLeft=new int[spacesLeft];
-            //map id # to actual location that is not occupied by
-            for (int i=0, id=0; i<R*C; i++) {
-                if (!occupied[i]) {
-                    id_locLeft[id]=i;
-                    id++;
-                }
-            }
-            int baseline=tree.depth(code);
-            for (int trans:sorted_trans) {
-                int tr=trans/C, tc=trans%C;
-                int worstCaseDepth=0;
-                int[] transd_wanted_locs=transd_wanted_locs_table[trans];
-                int maxCode=1;
-                for (int cnt=0; cnt<trans_uniques[trans]; cnt++)
-                    maxCode*=spacesLeft-cnt;
-                for (int ncode=0; ncode<maxCode; ncode++) {
-                    int[] uniquePcs_locs=Tree.decoded(ncode,spacesLeft,trans_uniques[trans]);
-                    for (int i=0; i<uniquePcs_locs.length; i++)
-                        uniquePcs_locs[i]=id_locLeft[uniquePcs_locs[i]];
-                    int[] n_pcLoc=pc_loc.clone();
-                    int cntr=0;
-                    for (int loc:transd_wanted_locs)
-                        if (!WANTED[loc]) {
-                            n_pcLoc[loc] = uniquePcs_locs[cntr];
-                            cntr++;
+                        if (bestd>=depth) {
+                            System.out.println("NOT IMPROVED");
+                            System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
+                            System.out.println("scramble:");
+                            List<int[]> s1=t1.scrambleMvs(c1);
+                            for (int[] mv:s1)
+                                System.out.print(" "+Arrays.toString(mv));
+                            System.out.println();
+                            List<int[]> s0=t0.scrambleMvs(c0);
+                            for (int[] mv:s0)
+                                System.out.print(" "+Arrays.toString(mv));
+                            System.out.println();
+                            System.out.println("[0, x, y] means move row x right y units (left if y is negative)");
+                            System.out.println("[1, x, y] means move column x down y units (up if y is negative)");
+                            return;
                         }
-                    int[] nscramble=new int[tree.wcnt];
-                    for (int i=0; i<tree.wcnt; i++)
-                        nscramble[i]=transd(n_pcLoc[transd_wanted_locs[i]],R,C,-tr,-tc);
-                    int depth=tree.depth(tree.code(nscramble));
-                    worstCaseDepth=Math.max(worstCaseDepth,depth);
-                    if (worstCaseDepth>=tree.depth(code))
-                        break;
-                }
-                if (worstCaseDepth<baseline) {
-                    code_improved[code]=true;
-                    break;
-                }
-                //System.out.println("worst case="+worstCaseDepth);
-            }
-            reps++;
-            if (reps>=reps_toprint) {
-                System.out.println(reps+" tried ("+(System.currentTimeMillis()-st)+")...");
-                reps_toprint*=1.5;
-            }
-        }
-        tree.improved=code_improved;
-        int[] depth_distr=new int[tree.levelCnt];
-        for (int i=0; i<tree.permsAmt; i++)
-            if (!code_improved[i])
-                depth_distr[tree.depth(i)]++;
-        System.out.println(Arrays.toString(depth_distr));
+                        maxd=Math.max(maxd,bestd);
+                        cnt++;
+                        if (cnt>=mark) {
+                            System.out.printf(form,cnt,System.currentTimeMillis()-st);
+                            mark*=1.5;
+                        }
+                    }
+        System.out.println("improvement time="+(System.currentTimeMillis()-st));
+        System.out.println(cnt+" scrambles of depth>="+depth+" improved to <="+maxd);
+        System.out.println("check="+check+", show="+show);
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        //Tree[] trees={new Tree("11000","11100"), new Tree("xx100","xxx10")};
-        Tree[] trees={new Tree("1100","1110"),new Tree("xx11","xxx1")};
-        System.out.println(System.currentTimeMillis()-st+" ms (BFS)");
-        st=System.currentTimeMillis();
-        improve(trees[0],1);
-        System.out.println(System.currentTimeMillis()-st+" ms (improving 1 tree)");
-        improve(trees,24);
+        improve(4,4,
+                new int[]{0, 1}, new int[]{0, 1, 2},
+                new int[]{2, 3}, new int[]{3},
+                22,false,false);
+        System.out.println("time="+(System.currentTimeMillis()-st));
     }
-    /*
-    say you want to solve a subset of all the tiles
-    ex. in 4x4 (where R=4, C=4) you want to solve the 2x3 block whose upper-left corner is (0,0)
-    all the tiles in the 4x4 are like this:
-    0  1  2  3
-    4  5  6  7
-    8  9  10 11
-    12 13 14 15
-    the 2x3 block thus consists of the pieces 0, 1, 2, 4, 5, and 6
-    the 2x3 block is represented as rowDo=1100, colDo=1110 because it consists of all pieces that belong to the first two rows and the first three columns
-    0  1  2  -
-    4  5  6  -
-    -  -  -  -
-    -  -  -  -
-    the respective Tree object with the value new Tree("1100","1110") contains every possible scramble of the pieces 0, 1, 2, 4, 5, and 6,
-    the so-called "wanted pieces"
-    these wanted pieces are kept in the array wanted_locs, which in this example equals [0, 1, 2, 4, 5, 6]
-    every possible scramble containing only these wanted pieces is represented as an int array with the same length as wanted_locs
-    such that element i of this scramble is the location of the tile wanted_locs[i]
-    ex. the scramble [10, 14, 2, 8, 9, 13] translates to:
-    -  -  2  -
-    -  -  -  -
-    4  5  0  -
-    -  6  1  -
-    every scramble is stored in the Tree by converting it into a 64-bit integer
-    
-    the Tree will start with the identity scramble, where all the wanted pieces are solved, and perform a breadth-first search (BFS) to all other permutations via Loopover single-turn moves
-    each permutation must remember what permutation led to it in the BFS, what Loopover move led to it, and at what depth it was in the search tree
-    this info is also compressed in a 64-bit integer
-    */
     private static class Tree {
-        //brute force all ways of expanding a partially solved board to one with more
-        private static int encoded(int[] pperm, int n) {
-            int[] help=new int[n];
-            for (int i=0; i<n; i++)
-                help[i]=i;
-            int[] loc=help.clone();
-            int out=0;
-            for (int i=n-1; i>n-1-pperm.length; i--) {
-                int id=pperm[i-(n-pperm.length)];
-                int place=loc[id];
-                out*=i+1;
-                out+=place;
-                //swap
-                int tmp=help[place];
-                int last=help[i];
-                loc[last]=place;
-                loc[tmp]=i;
-                help[place]=last;
-                help[i]=tmp;
-            }
-            return out;
+        /*
+        make BFS tree of RxC loopover with some rows/cols fixed,
+            with the goal of expanding the set of solved rows/cols
+            rl[r]=true if row r is already fixed
+            cl[c]=true if col c is already fixed
+            grl[r]=true if row r is not yet fixed but will be after using the BFS tree
+            gcl[c]=true if col c is not yet fixed but will be after using the BFS tree
+        */
+        private int R, C;
+        private boolean[] rl, cl, grl, gcl;
+        private int[] loc_id, id_floc, id_wloc;
+        private int[][] moves;
+        private long[] data;
+        /*
+        data[code]=# representing (depth,mvid,par)
+        let scr be the subscramble represented by int code
+        depth=depth of scr in BFS
+        mvid=id of the move that transformed the parent of scr to scr
+        par=parent of scr
+         */
+        private int nperms, fcnt, wcnt, maxdepth;
+        private boolean soonLocked(int i) {
+            return grl[i/C] && gcl[i%C];
         }
-        private static int[] decoded(int code, int n, int k) {
-            int[] swapidxs=new int[n];
-            for (int help=code, id=n-k; id<n; id++) {
-                swapidxs[id]=(help%(id+1));
-                help/=id+1;
-            }
-            int[] perm=new int[n];
-            for (int i=0; i<n; i++)
-                perm[i]=i;
-            for (int id=n-1; id>n-1-k; id--) {
-                int tmp=perm[id];
-                perm[id]=perm[swapidxs[id]];
-                perm[swapidxs[id]]=tmp;
-            }
-            int[] out=new int[k];
-            for (int i=0; i<k; i++)
-                out[i]=perm[i+n-k];
-            return out;
+        private int maxdepth() {
+            return maxdepth;
         }
-        private static final char LOCKED='x', WANTED='1';
-        String rowDo, colDo;
-        int R, C, spaces, wcnt, permsAmt;
-        int[] loc_id, //map an actual location in the RxC board to a number of a smaller range (index of a non-locked location)
-                id_loc;
-        int[] wanted_locs; //locations of the pieces that are going to be solved, in order
-        long[] data;
-        int levelCnt; //# of levels in BFS (includes solved permutation)
-        //LOCKED = row/col already solved, do not touch
-        //WANTED = row/col we want to solve
-        //else= ignore
-        boolean[] improved; //used in void improve(Tree tree, int D)
-        private long compressed(Move mv, int depth, int par) {
-            long out=depth;
-            out*=2*R*C;
-            out+=mv.horz?(mod(mv.coord,R)*C+mod(mv.shift,C)):(mod(mv.coord,C)*R+mod(mv.shift,R)+R*C);
-            out*=2;
-            out+=mv.horz?0:1;
-            out*=permsAmt;
-            out+=par;
-            return out;
+        private int nperms() {
+            return nperms;
         }
-        private Move get_move(int code) {
-            long help=data[code]/permsAmt;
-            boolean horz=help%2==0;
-            help/=2;
-            help%=2*R*C;
-            if (!horz)
-                help-=R*C;
-            int len=horz?C:R;
-            int coord=(int)help/len, shift=(int)help%len;
-            return new Move(horz,coord,shift);
+        private long compressed(int depth, int mvid, int par) {
+            return ((long)depth*moves.length+mvid)*nperms+par;
         }
         public int depth(int code) {
-            return (int)(data[code]/permsAmt/2/(2*R*C));
+            return (int)(data[code]/nperms/moves.length);
         }
-        public Tree(String rowDo, String colDo) {
-            System.out.println(rowDo);
-            System.out.println(colDo);
-            this.rowDo =rowDo;
-            this.colDo =colDo;
-            R=rowDo.length();
-            C=colDo.length();
-            int l_rcnt=0, l_ccnt=0, w_rcnt=0, w_ccnt=0;
-            for (int r=0; r<R; r++) {
-                char st=rowDo.charAt(r);
-                if (st==LOCKED)
-                    l_rcnt++;
-                else if (st==WANTED)
-                    w_rcnt++;
-            }
-            for (int c=0; c<C; c++) {
-                char st=colDo.charAt(c);
-                if (st==LOCKED)
-                    l_ccnt++;
-                else if (st==WANTED)
-                    w_ccnt++;
-            }
-            int lcnt=l_rcnt*l_ccnt;
-            wcnt=w_rcnt*l_ccnt+w_ccnt*l_rcnt+w_rcnt*w_ccnt;
-            spaces=R*C-lcnt;
-            permsAmt =1;
-            for (int cnt=0; cnt<wcnt; cnt++)
-                permsAmt *=spaces-cnt;
-            System.out.println(permsAmt);
-            data=new long[permsAmt];
-            improved=new boolean[permsAmt]; //DO NOT TOUCH THIS IN THIS CONSTRUCTOR
-            for (int i=0; i<permsAmt; i++)
-                data[i]=-1;
-            //map each location to id [0,spaces)
+        public int mvid(int code) {
+            return (int)(data[code]/nperms%moves.length);
+        }
+        public int par(int code) {
+            return (int)(data[code]%nperms);
+        }
+        public Tree(int R, int C, int[] lr, int[] lc, int[] wr, int[] wc) {
+            this.R=R;
+            this.C=C;
+            rl=new boolean[R];
+            cl=new boolean[C];
+            for (int r:lr)
+                rl[r]=true;
+            for (int c:lc)
+                cl[c]=true;
+            int nlr=0, nlc=0;
+            for (boolean b:rl) if (b) nlr++;
+            for (boolean b:cl) if (b) nlc++;
+            grl=rl.clone();
+            gcl=cl.clone();
+            for (int r:wr)
+                grl[r]=true;
+            for (int c:wc)
+                gcl[c]=true;
+            int nglr=0, nglc=0;
+            for (boolean b:grl) if (b) nglr++;
+            for (boolean b:gcl) if (b) nglc++;
+            fcnt=R*C-nlr*nlc;
             loc_id=new int[R*C];
-            for (int i=0, id=0; i<R*C; i++)
-                if (rowDo.charAt(i/C)==LOCKED && colDo.charAt(i%C)==LOCKED)
-                    loc_id[i]=-1;
-                else {
-                    loc_id[i] = id;
-                    id++;
-                }
-            id_loc=new int[spaces];
-            for (int loc=0; loc<R*C; loc++)
-                if (loc_id[loc]!=-1)
-                    id_loc[loc_id[loc]]=loc;
-            int[] solved=new int[wcnt];
+            id_floc =new int[fcnt];
             for (int i=0, id=0; i<R*C; i++) {
                 int r=i/C, c=i%C;
-                char rst=rowDo.charAt(r), cst=colDo.charAt(c);
-                if ((rst==LOCKED || rst==WANTED) && (cst==LOCKED || cst==WANTED) && !(rst==LOCKED && cst==LOCKED)) {
-                    solved[id]=i;
+                if (rl[r] && cl[c])
+                    loc_id[i]=-1;
+                else {
+                    loc_id[i]=id;
+                    id_floc[id]=i;
                     id++;
                 }
             }
-            wanted_locs=solved.clone();
-            //System.out.println(Arrays.toString(wanted_locs));
-            int solved_code=code(solved);
-            data[solved_code]=compressed(new Move(true,0,0),0,0);
-            int[] scrambleCodes=new int[] {solved_code};
+            wcnt=nglr*nglc-nlr*nlc;
+            id_wloc=new int[wcnt];
+            for (int i=0, id=0; i<R*C; i++) {
+                int r=i/C, c=i%C;
+                if (grl[r] && gcl[c] && !(rl[r] && cl[c])) {
+                    id_wloc[id]=i;
+                    id++;
+                }
+            }
+            moves=new int[2*(R-nlr+C-nlc)][];
+            for (int type=0, id=0; type<2; type++) {
+                for (int coord=0; coord<(type==0?R:C); coord++)
+                    if (!(type==0?rl:cl)[coord])
+                        for (int shift=-1; shift<=1; shift+=2) {
+                            moves[id]=new int[] {type,coord,shift};
+                            id++;
+                        }
+            }
+            for (int m=0; m<moves.length; m++)
+                System.out.println(m+":"+Arrays.toString(moves[m]));
+            nperms=1;
+            for (int i=fcnt; i>fcnt-wcnt; i--)
+                nperms*=i;
+            System.out.println(R+" "+C+" "
+                    +Arrays.toString(lr)+" "+Arrays.toString(lc)+" "
+                    +Arrays.toString(wr)+" "+Arrays.toString(wc));
+            System.out.println(nperms);
+            data=new long[nperms];
+            Arrays.fill(data,-1);
+            int initcode=subscramble_code(id_wloc);
+            System.out.println(Arrays.toString(id_wloc));
+            data[initcode]=compressed(0,0,0);
+            maxdepth =0;
+            int[] front={initcode};
             int reached=1;
-            for (int depth=1; true; depth++) {
-                int[] level=new int[permsAmt];
-                int level_sz=0;
-                double idx_toprint=3000_000;
-                int idx=0;
-                for (int parentCode:scrambleCodes) {
-                    int[] sc=scramble(parentCode);
-                    for (int r=0; r<R; r++)
-                        if (rowDo.charAt(r)!=LOCKED)
-                            for (int shift = -1; shift <= 1; shift += 2) {
-                                int[] nsc = sc.clone();
-                                Move mv = new Move(true, r, shift);
-                                move(nsc, R, C, mv);
-                                int code = code(nsc);
-                                if (data[code]==-1) {
-                                    data[code]=compressed(mv,depth,parentCode);
-                                    level[level_sz]=code;
-                                    level_sz++;
-                                }
-                            }
-                    for (int c=0; c<C; c++)
-                        if (colDo.charAt(c)!=LOCKED)
-                            for (int shift = -1; shift <= 1; shift += 2) {
-                                int[] nsc = sc.clone();
-                                Move mv = new Move(false, c, shift);
-                                move(nsc, R, C, mv);
-                                int code = code(nsc);
-                                if (data[code]==-1) {
-                                    data[code]=compressed(mv,depth,parentCode);
-                                    level[level_sz]=code;
-                                    level_sz++;
-                                }
-                            }
-                    idx++;
-                    if (idx>=idx_toprint) {
-                        System.out.println("i "+idx);
-                        idx_toprint*=1.5;
-                        //idx_toprint+=2_000_000;
+            while (true) {
+                int[] nf=new int[nperms];
+                int sz=0;
+                for (int c:front) {
+                    int[] subscramble=code_subscramble(c);
+                    for (int m=0; m<moves.length; m++) {
+                        int nc=//subscramble_code(moved(subscramble,moves[m]));
+                                moved_code(subscramble,moves[m]);
+                        if (data[nc]==-1) {
+                            data[nc]=compressed(depth(c)+1,m,c);
+                            nf[sz]=nc;
+                            sz++;
+                            reached++;
+                        }
                     }
                 }
-                reached+=level_sz;
-                if (level_sz>0) {
-                    int[] trimmed=new int[level_sz];
-                    System.arraycopy(level,0,trimmed,0,level_sz);
-                    scrambleCodes=trimmed;
-                    System.out.println(depth + ": " + level_sz);
-                }
-                else {
-                    levelCnt =depth;
+                if (sz==0)
                     break;
+                maxdepth++;
+                front=new int[sz];
+                System.arraycopy(nf,0,front,0,sz);
+                System.out.println(maxdepth +":"+sz);
+            }
+            if (reached<nperms)
+                System.out.println("!!!ONLY REACHED "+reached+"/"+nperms);
+            System.out.println("maxdepth="+ maxdepth);
+        }
+        private int moved_code(int[] subscramble, int[] mv) {
+            int[] loc=new int[fcnt];
+            for (int i=0; i<fcnt; i++)
+                loc[i]=i;
+            int[] perm=loc.clone();
+            int out=0;
+            for (int b=fcnt; b>fcnt-wcnt; b--) {
+                out*=b;
+                int piece=subscramble[b-1-(fcnt-wcnt)],
+                        r=piece/C, c=piece%C;
+                int v=loc_id[
+                        mv[0]==0 && r==mv[1]?
+                                (r*C+mod(c+mv[2],C)):
+                                mv[0]==1 && c==mv[1]?
+                                        (mod(r+mv[2],R)*C+c):
+                                        piece], l=loc[v];
+                int ov=perm[b-1];
+                out+=l;
+                loc[ov]=l;
+                perm[l]=ov;
+            }
+            return out;
+        }
+        private int[] moved(int[] subscramble, int[] mv) {
+            int[] out=subscramble.clone();
+            if (mv[0]==0)
+                for (int i=0; i<subscramble.length; i++) {
+                    int r=subscramble[i]/C, c=subscramble[i]%C;
+                    if (r==mv[1])
+                        out[i]=r*C+mod(c+mv[2],C);
                 }
+            else
+                for (int i=0; i<subscramble.length; i++) {
+                    int r=subscramble[i]/C, c=subscramble[i]%C;
+                    if (c==mv[1])
+                        out[i]=mod(r+mv[2],R)*C+c;
+                }
+            return out;
+        }
+        private int subscramble_code(int[] subscramble) {
+            int[] loc=new int[fcnt];
+            for (int i=0; i<fcnt; i++)
+                loc[i]=i;
+            int[] perm=loc.clone();
+            int out=0;
+            for (int b=fcnt; b>fcnt-wcnt; b--) {
+                out*=b;
+                int v=loc_id[subscramble[b-1-(fcnt-wcnt)]], l=loc[v];
+                int ov=perm[b-1];
+                out+=l;
+                loc[ov]=l;
+                perm[l]=ov;
             }
-            System.out.println("reached="+reached);
-            System.out.println("permsAmt="+ permsAmt);
+            return out;
         }
-        private int code(int[] scramble) {
-            int[] converted=new int[scramble.length];
-            for (int i=0; i<scramble.length; i++)
-                converted[i]=loc_id[scramble[i]];
-            return encoded(converted,spaces);
-        }
-        private int[] scramble(int code) {
-            int[] toconvert=decoded(code,spaces,wcnt);
-            for (int i=0; i<toconvert.length; i++)
-                toconvert[i]=id_loc[toconvert[i]];
-            return toconvert;
-        }
-        public ArrayList<Move> solution(int[] locs) {
-            if (locs.length!=wcnt)
-                throw new RuntimeException("Invalid input: "+Arrays.toString(locs));
-            return solution(code(locs));
-        }
-        public ArrayList<Move> solution(int code) {
-            if (data[code]==-1)
-                return null; //perm never reached (can happen if all perms are restricted to being even)
-            ArrayList<Move> out=new ArrayList<>();
-            while (true) {
-                Move mv=get_move(code).inv();
-                if (mv.shift==0)
-                    break;
-                out.add(mv);
-                code= (int)(data[code]%permsAmt);
+        private int[] code_subscramble(int code) {
+            int pow=1;
+            for (int i=fcnt-wcnt+1; i<fcnt; i++)
+                pow*=i;
+            int[] perm=new int[fcnt];
+            for (int i=0; i<fcnt; i++)
+                perm[i]=i;
+            for (int id=fcnt-1; id>fcnt-1-wcnt; id--) {
+                int idx=code/pow;
+                int tmp=perm[id];
+                perm[id]=perm[idx];
+                perm[idx]=tmp;
+                code=code%pow;
+                if (id!=0)
+                    pow/=id;
             }
+            int[] out=new int[wcnt];
+            for (int i=0; i<wcnt; i++)
+                out[i]=id_floc[perm[i+fcnt-wcnt]];
+            return out;
+        }
+        public int[] solveAction(int code) {
+            if (depth(code)==-1)
+                throw new RuntimeException();
+            int[] out=new int[R*C];
+            for (int i=0; i<R*C; i++)
+                out[i]=i;
+            for (int c=code; depth(c)>0; c=par(c))
+                out=moved(out,inv(moves[mvid(c)]));
+            return out;
+        }
+        public int[] scrambleAction(int code) {
+            int[] tmp=solveAction(code);
+            int[] out=new int[R*C];
+            for (int i=0; i<R*C; i++)
+                out[tmp[i]]=i;
+            return out;
+        }
+        public List<Integer> bwd_mvids(int code) {
+            List<Integer> out=new ArrayList<>();
+            for (int c=code; depth(c)>0; c=par(c))
+                out.add(mvid(c));
+            return out;
+        }
+        public List<int[]> scrambleMvs(int code) {
+            List<Integer> ids=bwd_mvids(code);
+            List<int[]> out=new ArrayList<>();
+            for (int i=ids.size()-1; i>-1; i--)
+                out.add(moves[ids.get(i)].clone());
             return out;
         }
     }
-    private static class Move {
-        boolean horz;
-        int coord, shift;
-        public Move(boolean horz, int coord, int shift) {
-            this.horz=horz;
-            this.coord=coord;
-            this.shift=shift;
-        }
-        public Move transd(int tr, int tc) {
-            return new Move(horz,coord+(horz?tr:tc),shift);
-        }
-        public Move inv() {
-            return new Move(horz,coord,-shift);
-        }
-        public static ArrayList<Move> inv(ArrayList<Move> moves) {
-            ArrayList<Move> out=new ArrayList<>();
-            for (int i=moves.size()-1; i>-1; i--)
-                out.add(moves.get(i).inv());
-            return out;
-        }
-        public String toString() {
-            return (horz?"R":"C")+" "+coord+" "+shift;
-        }
+    private static int mod(int n, int k) {
+        return (n%k+k)%k;
+    }
+    private static int[] inv(int[] mv) {
+        return new int[] {mv[0],mv[1],-mv[2]};
     }
 }
