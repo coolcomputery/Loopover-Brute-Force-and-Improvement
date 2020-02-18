@@ -64,12 +64,6 @@ public class LoopoverBruteForce {
     }
     private static void improve(int R, int C, int[] wr0, int[] wc0, int[] wr1, int[] wc1, int depth, boolean check, boolean show) {
         /*
-        creates two BFS trees for solving two subsets of the RxC loopover,
-            which gives every RxC loopover permutation an upper bound on the # of moves it takes to solve it,
-            then takes every permutation with an upper bound >=depth and solves a translated version of it to obtain a bound <depth
-            (exploiting translational symmetry of loopover)
-        */
-        /*
         set check to true if you want the program to check for correctness, false otherwise
         set show to true if you want the program to show each scramble it tries
          */
@@ -163,12 +157,9 @@ public class LoopoverBruteForce {
                                     move(R, C, perm, tmv);
                                     solveA.add(tmv);
                                 }
-                                int[] tscramble=new int[R*C];
-                                for (int i=0; i<R*C; i++)
-                                    tscramble[perm[i]]=i;
                                 boolean good=true;
                                 for (int i=0; i<R*C; i++)
-                                    if (t0.soonLocked(transloc(R,C,i,-tr,-tc)) && tscramble[i]!=i) {
+                                    if (t0.soonLocked(transloc(R,C,i,-tr,-tc)) && perm[i]!=i) {
                                         good=false;
                                         break;
                                     }
@@ -192,9 +183,9 @@ public class LoopoverBruteForce {
                                         solveB.add(tmv);
                                     }
                                     boolean solved = true;
-                                    for (int i = 0; i < R * C; i++)
-                                        if (perm[i] != i) {
-                                            solved = false;
+                                    for (int i=0; i<R*C; i++)
+                                        if (t1.soonLocked(transloc(R,C,i,-tr,-tc)) && perm[i]!=i) {
+                                            solved=false;
                                             break;
                                         }
                                     if (!solved || show) {
@@ -212,6 +203,7 @@ public class LoopoverBruteForce {
                                         System.out.println("\n"+permStr(R, C, perm));
                                         if (!show)
                                             System.out.println("translation=("+tr+","+tc+")");
+                                        System.out.println("original depths: d0="+d0+", d1="+d1);
                                         if (!solved)
                                             return;
                                     }
@@ -251,20 +243,12 @@ public class LoopoverBruteForce {
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
         improve(4,4,
-                new int[]{0, 1}, new int[]{0, 1, 2},
-                new int[]{2, 3}, new int[]{3},
-                22,false,false);
+                new int[]{0, 1}, new int[]{0, 1},
+                new int[]{2}, new int[]{2},
+                20,true,false);
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
     private static class Tree {
-        /*
-        make BFS tree of RxC loopover with some rows/cols fixed,
-            with the goal of expanding the set of solved rows/cols
-            rl[r]=true if row r is already fixed
-            cl[c]=true if col c is already fixed
-            grl[r]=true if row r is not yet fixed but will be after using the BFS tree
-            gcl[c]=true if col c is not yet fixed but will be after using the BFS tree
-        */
         private int R, C;
         private boolean[] rl, cl, grl, gcl;
         private int[] loc_id, id_floc, id_wloc;
