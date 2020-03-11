@@ -71,7 +71,7 @@ xxxx
 xxxx
 ```
 
-Other transformations allowed include rotations and reflections (although these are not supported yet), ex.
+Other transformations allowed include rotations (not supported) and reflections (supported), ex.
 ```
 ....  
 ....  
