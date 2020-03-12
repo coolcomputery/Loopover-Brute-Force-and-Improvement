@@ -53,7 +53,7 @@ xxxx
 xxxx (entire board solved)
 ```
 
-If we want to reduce the number of moves it takes to solve this RxC loopover, instead of restricting ourselves to start at the top-left corner, we can solve translated versions of the intended regions we want to solve, ex.
+If we want to reduce the number of moves it takes to solve this RxC loopover, we can solve transformed versions of the intended regions we want to solve instead of restricting ourselves to start at the top-left corner, ex.
 ```
 ....  
 ....  
@@ -71,7 +71,7 @@ xxxx
 xxxx
 ```
 
-Other transformations allowed include rotations (not supported) and reflections (supported), ex.
+Other transformations allowed include rotations (not yet supported) and reflections (supported), ex.
 ```
 ....  
 ....  
@@ -88,3 +88,4 @@ xxxx
 xxxx  
 xxxx
 ```
+**NOTE: the trees must eventually result in a fully solved board, otherwise this algorithm is incorrect.**
