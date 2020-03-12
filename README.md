@@ -1,6 +1,6 @@
 # Loopover-Brute-Force-and-Improvement
 
-This program is intended to take a block-building approach to solving Loopover and exploit the symmetries of the puzzle to improve the upper bounds on God's number for Loopover.
+This program is intended to take a block-building approach to solving Loopover (originally created by carykh) and exploit the symmetries of the puzzle to improve the upper bounds on God's number for Loopover.
 
 ## Formal explanation
 
