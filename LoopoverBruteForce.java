@@ -76,17 +76,47 @@ public class LoopoverBruteForce {
                 new int[] {mv[0],mv[1],mod(-mv[2],C)}:
                 new int[] {mv[0],mod(C-1-mv[1],C),mv[2]};
     }
-    private static void improve(int R, int C, int[] wr0, int[] wc0, int[] wr1, int[] wc1, int depth, boolean check, boolean show, boolean store_scrambleActions) {
+    private static void improveComplete(int R, int C, int[] wr0, int[] wc0, int depth, boolean check, boolean show, boolean store_scrambleActions) {
+        /*
+        does a 0x0 -> {wr0}x{wc0} -> NxN blok-building algorithm,
+            then takes all scrambles of NxN Loopover that result in a solution of length >=depth
+            and tries doing block-building but in a transformed fashion to take advantage of symmetry of Loopover
+                (start block at different location, build in other directions, etc.)
+         */
         /*
         set check to true if you want the program to check for correctness, false otherwise
         set show to true if you want the program to show each scramble it tries
+        set store_scrambleActions to true if you want to store each scramble as a permutation
+            instead of having to always reconstruct it from a BFS tree
          */
         long st=System.currentTimeMillis();
+        boolean[] rl=new boolean[R], cl=new boolean[C];
+        for (int r:wr0)
+            rl[r]=true;
+        for (int c:wc0)
+            cl[c]=true;
+        int nwr1=0, nwc1=0;
+        for (int r=0; r<R; r++)
+            if (!rl[r])
+                nwr1++;
+        for (int c=0; c<C; c++)
+            if (!cl[c])
+                nwc1++;
+        int[] wr1=new int[nwr1], wc1=new int[nwc1];
+        for (int i=0, r=0; r<R; r++)
+            if (!rl[r]) {
+                wr1[i]=r;
+                i++;
+            }
+        for (int i=0, c=0; c<C; c++)
+            if (!cl[c]) {
+                wc1[i]=c;
+                i++;
+            }
         Tree t0=new Tree(R,C,new int[0], new int[0], wr0, wc0),
                 t1=new Tree(R,C,wr0,wc0,wr1,wc1);
         System.out.println("bfs time="+(System.currentTimeMillis()-st));
         System.out.println("depth to improve="+depth);
-        //improve depth of all scrambles with (their naive # mvs to solve)>=depth
         st=System.currentTimeMillis();
         int mind0=depth-t1.maxdepth(), mind1=depth-t0.maxdepth();
         int[][] codes0=binnedCodes(t0,mind0),
@@ -98,12 +128,11 @@ public class LoopoverBruteForce {
         }
         int[][] solve0=new int[t0.nperms()][];
         int T=4*R*C;
-        //tarr[ti*R*C+l]=new location when l is put under transformation ti
         int[][] transf=new int[T][R*C];
         for (int ti=0; ti<T; ti++)
             for (int l=0; l<R*C; l++) {
                 int nl=(ti&1)==0?l:(R-1-l/C)*C+l%C; //reflect over horizontal center
-                nl=(ti&2)==0?nl:nl/C*C+(C-1-nl%C);
+                nl=(ti&2)==0?nl:nl/C*C+(C-1-nl%C); //reflect over vertical center
                 transf[ti][l] = transloc(R, C, nl, ti/4 / C, ti/4 % C);
             }
         int[][] inv_transf=new int[T][R*C];
@@ -111,7 +140,8 @@ public class LoopoverBruteForce {
             for (int l=0; l<R*C; l++)
                 inv_transf[t][transf[t][l]]=l;
         }
-        int[] tarr=new int[T*R*C], invtarr=new int[T*R*C]; //don't really improve speed
+        int[] tarr=new int[T*R*C], invtarr=new int[T*R*C];
+        //converting 2D arrays to 1D arrays doesn't seem to improve speed by much
         for (int t=0; t<T; t++)
             for (int l=0; l<R*C; l++) {
                 tarr[t*R*C+l]=transf[t][l];
@@ -131,7 +161,7 @@ public class LoopoverBruteForce {
         st=System.currentTimeMillis();
         for (int d0=mind0; d0<=t0.maxdepth(); d0++)
             for (int d1=depth-d0; d1<=t1.maxdepth(); d1++) {
-                System.out.println("depth pair ["+d0+","+d1+"] started (#scrambles="+(long)(codes0[d0].length*codes1[d1].length)+")");
+                System.out.println("depth pair ["+d0+","+d1+"] started (#scrambles="+((long)codes0[d0].length*codes1[d1].length)+")");
                 for (int c0 : codes0[d0]) {
                     int[] scra0 = store_scrambleActions ? sa0[c0] : t0.scrambleAction(c0);
                     for (int c1 : codes1[d1]) {
@@ -164,14 +194,14 @@ public class LoopoverBruteForce {
                             int totd = 0;
                             int[] subscr0 = new int[t0.wcnt]; //subscr0[i]=tscr[t0.id_wloc[i]]
                             for (int i = 0; i < t0.wcnt; i++)
-                                subscr0[i] = //inv_transf[ti][scramble[transf[ti][t0.id_wloc[i]]]];
-                                            invtarr[ti*R*C+scramble[tarr[ti*R*C+t0.id_wloc[i]]]];
+                                subscr0[i] = invtarr[ti*R*C+scramble[tarr[ti*R*C+t0.id_wloc[i]]]];
                             int code0 = t0.subscramble_code(subscr0), code1 = -1;
                             boolean skip = false;
                             if (t0.depth(code0) + t1.maxdepth() < depth) {
                                 totd = depth - 1;
                                 skip = true;
-                            } else {
+                            }
+                            else {
                                 if (solve0[code0] == null)
                                     solve0[code0] = t0.solveAction(code0);
                                 //now tscr'[i]=solve0[code][tscr[i]] (tscr'=tscr put under the solve0[code] transformation)
@@ -183,10 +213,10 @@ public class LoopoverBruteForce {
                                 code1 = t1.subscramble_code(subscr1);
                                 totd += t1.depth(code1);
                             }
-                            if (check && ti%4!=0) {
+                            if (check) {
                                 int flipr = ti & 1, flipc = (ti & 2) == 0 ? 0 : 1, tr = ti / 4 / C, tc = ti / 4 % C;
                                 if (show)
-                                    System.out.printf("transf=%d,%d,%d,%d%n", flipr, flipc, tr, tc);//("transf=("+flipr+"," + tr + "," + tc + ")");
+                                    System.out.printf("transf=%d,%d,%d,%d%n", flipr, flipc, tr, tc);
                                 List<int[]> scrA = t0.scrambleMvs(code0), solveA = new ArrayList<>();
                                 int[] perm = new int[R * C];
                                 for (int i = 0; i < R * C; i++)
@@ -294,7 +324,6 @@ public class LoopoverBruteForce {
                         }
                     }
                 }
-                //System.out.println("depth pair ["+d0+","+d1+"] completed");
             }
         System.out.println("improvement time="+(System.currentTimeMillis()-st));
         System.out.println(cnt+" scrambles of depth>="+depth+" improved to <="+maxd);
@@ -302,18 +331,20 @@ public class LoopoverBruteForce {
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        /*improve(5,5,
+        improveComplete(4,4,
                 new int[] {0,1}, new int[] {0,1,2},
-                new int[] {2},new int[] {3},
-                27,false,false,true);*/
-        /*improve(4,4,
-                new int[] {0,1}, new int[] {0,1,2},
-                new int[] {2,3},new int[] {3},
-                23,false,false,true);*/
-        improve(6,6,
-                new int[] {0,1}, new int[] {0,1},
-                new int[] {2},new int[] {2},
-                30,false,false,true);
+                27,false,false,true);
+        //0x0,2x2,3x3,3x4,4x4,4x5,5x5,6x6
+        /*new Tree(6,6,new int[] {0,1,2}, new int[] {0,1,2},
+                new int[0],new int[] {3});
+        new Tree(6,6,new int[] {0,1,2}, new int[] {0,1,2,3},
+                new int[] {3},new int[0]);
+        new Tree(6,6,new int[] {0,1,2,3}, new int[] {0,1,2,3},
+                new int[] {},new int[] {4});
+        new Tree(6,6,new int[] {0,1,2,3}, new int[] {0,1,2,3,4},
+                new int[] {4},new int[] {});
+        new Tree(6,6,new int[] {0,1,2,3,4}, new int[] {0,1,2,3,4},
+                new int[] {5},new int[] {5});*/
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
     private static class Tree {
@@ -364,6 +395,9 @@ public class LoopoverBruteForce {
             return (int)(data[code]%nperms);
         }
         public Tree(int R, int C, int[] lr, int[] lc, int[] wr, int[] wc) {
+            //lr[], lc[]=rows and columns that are not allowed to be moved
+            //wr[], wc[]=new rows and columns s.t. we want to convert every (R,C,lr,lc) Loopover subgroup
+            //  to a (R,C,(lr union wr),(lc union wc)) Loopover subgroup
             this.R=R;
             this.C=C;
             rl=new boolean[R];
@@ -415,8 +449,6 @@ public class LoopoverBruteForce {
                             id++;
                         }
             }
-            /*for (int m=0; m<moves.length; m++)
-                System.out.println(m+":"+Arrays.toString(moves[m]));*/
             long n_perms=1;
             for (int i=fcnt; i>fcnt-wcnt; i--)
                 n_perms*=i;
@@ -459,7 +491,8 @@ public class LoopoverBruteForce {
                 System.out.println(maxdepth +":"+sz);
             }
             if (reached<n_perms)
-                System.out.println("!!!ONLY REACHED "+reached+"/"+n_perms);
+                System.out.println("!!!ONLY REACHED "+reached+"/"+n_perms
+                        +" (could be because only even permutations are reached)");
             System.out.println("maxdepth="+ maxdepth);
         }
         private int moved_code(int[] subscramble, int[] mv) {
