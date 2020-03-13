@@ -27,6 +27,39 @@ public class LoopoverBruteForce {
         }
         return scrambleActions;
     }
+    private static long[] compressed(int[] a, int blen) {
+        //ea. int in a[] will take blen bits
+        //ex. a=[001,000,110,101,001] -> 001000110101 -> [001 000 11,0 101 001 0] (bits put in reverse order)
+        long[] out=new long[a.length*blen/64+1];
+        for (int i=0; i<a.length; i++) {
+            //bits i*blen to i*blen+blen-1
+            for (int b=0; b<blen; b++)
+                if ((a[i]&(1<<b))!=0)
+                    out[(i*blen+b)/64]|=1L<<((i*blen+b)%64);
+        }
+        return out;
+    }
+    private static int[] uncompressed(int n, long[] c, int blen) {
+        int[] out=new int[n];
+        for (int i=0; i<n; i++) {
+            for (int b=0; b<blen; b++)
+                if ((c[(i*blen+b)/64]&1L<<((i*blen+b)%64))!=0)
+                    out[i]|=1<<b;
+        }
+        return out;
+    }
+    private static long[][] compressedScrambleActions(Tree t, int[][] codes, int mind, int blen) {
+        System.out.println("memoizing "+t.str);
+        long[][] out=new long[t.nperms()][];
+        for (int d=t.maxdepth(); d>=mind; d--) {
+            System.out.println("starting depth "+d);
+            long st=System.currentTimeMillis();
+            for (int c : codes[d])
+                out[c]=compressed(t.scrambleAction(c),blen);
+            System.out.println("done in time="+(System.currentTimeMillis()-st));
+        }
+        return out;
+    }
     private static void move(int R, int C, int[] perm, int[] mv) {
         if(mv[0]==0) {
             int[] tmp=new int[C];
@@ -45,6 +78,24 @@ public class LoopoverBruteForce {
     }
     private static int transloc(int R, int C, int loc, int tr, int tc) {
         return mod(loc/C+tr,R)*C+mod(loc%C+tc,C);
+    }
+    private static String str(int[][] aa) {
+        StringBuilder str=new StringBuilder();
+        for (int i=0; i<aa.length; i++)
+            str.append(i==0?"":", ").append(Arrays.toString(aa[i]));
+        return str.toString();
+    }
+    private static String str(Collection<int[]> aa) {
+        StringBuilder str=new StringBuilder();
+        boolean first=true;
+        for (int[] a:aa) {
+            if (first)
+                first=false;
+            else
+                str.append(", ");
+            str.append(Arrays.toString(a));
+        }
+        return str.toString();
     }
     private static String str(int R, int C, int[] scramble) {
         int[] perm=new int[R*C];
@@ -76,9 +127,11 @@ public class LoopoverBruteForce {
                 new int[] {mv[0],mv[1],mod(-mv[2],C)}:
                 new int[] {mv[0],mod(C-1-mv[1],C),mv[2]};
     }
-    private static void improveComplete(int R, int C, int[] wr0, int[] wc0, int depth, boolean check, boolean show, boolean store_scrambleActions) {
+    private static void improveComplete(int R, int C,
+                                        int[] lr0, int[] lc0,
+                                        int depth, boolean check, boolean show, boolean store_scrambleActions) {
         /*
-        does a 0x0 -> {wr0}x{wc0} -> NxN blok-building algorithm,
+        does a 0x0 -> {lr0}x{lc0} -> NxN blok-building algorithm,
             then takes all scrambles of NxN Loopover that result in a solution of length >=depth
             and tries doing block-building but in a transformed fashion to take advantage of symmetry of Loopover
                 (start block at different location, build in other directions, etc.)
@@ -90,31 +143,35 @@ public class LoopoverBruteForce {
             instead of having to always reconstruct it from a BFS tree
          */
         long st=System.currentTimeMillis();
+        int B=0;
+        //B=min # s.t. 2^B>=R*C
+        while ((1<<B)<R*C)
+            B++;
         boolean[] rl=new boolean[R], cl=new boolean[C];
-        for (int r:wr0)
+        for (int r:lr0)
             rl[r]=true;
-        for (int c:wc0)
+        for (int c:lc0)
             cl[c]=true;
-        int nwr1=0, nwc1=0;
+        int nwr=0, nwc=0;
         for (int r=0; r<R; r++)
             if (!rl[r])
-                nwr1++;
+                nwr++;
         for (int c=0; c<C; c++)
             if (!cl[c])
-                nwc1++;
-        int[] wr1=new int[nwr1], wc1=new int[nwc1];
+                nwc++;
+        int[] wr=new int[nwr], wc=new int[nwc];
         for (int i=0, r=0; r<R; r++)
             if (!rl[r]) {
-                wr1[i]=r;
+                wr[i]=r;
                 i++;
             }
         for (int i=0, c=0; c<C; c++)
             if (!cl[c]) {
-                wc1[i]=c;
+                wc[i]=c;
                 i++;
             }
-        Tree t0=new Tree(R,C,new int[0], new int[0], wr0, wc0),
-                t1=new Tree(R,C,wr0,wc0,wr1,wc1);
+        Tree t0=new Tree(R,C,new int[0], new int[0], lr0, lc0),
+                t1=new Tree(R,C,lr0,lc0,wr,wc);
         System.out.println("bfs time="+(System.currentTimeMillis()-st));
         System.out.println("depth to improve="+depth);
         st=System.currentTimeMillis();
@@ -122,9 +179,14 @@ public class LoopoverBruteForce {
         int[][] codes0=binnedCodes(t0,mind0),
                 codes1=binnedCodes(t1,mind1);
         int[][] sa0=null,sa1=null;
+        long[][] sac0=null, sac1=null;
         if (store_scrambleActions) {
             sa0=scrambleActions(t0,codes0,mind0);
             sa1=scrambleActions(t1,codes1,mind1);
+        }
+        else {
+            sac0=compressedScrambleActions(t0,codes0,mind0,B);
+            sac1=compressedScrambleActions(t1,codes1,mind1,B);
         }
         int[][] solve0=new int[t0.nperms()][];
         int T=4*R*C;
@@ -163,9 +225,9 @@ public class LoopoverBruteForce {
             for (int d1=depth-d0; d1<=t1.maxdepth(); d1++) {
                 System.out.println("depth pair ["+d0+","+d1+"] started (#scrambles="+((long)codes0[d0].length*codes1[d1].length)+")");
                 for (int c0 : codes0[d0]) {
-                    int[] scra0 = store_scrambleActions ? sa0[c0] : t0.scrambleAction(c0);
+                    int[] scra0 = store_scrambleActions ? sa0[c0] : uncompressed(R*C,sac0[c0],B);//t0.scrambleAction(c0);
                     for (int c1 : codes1[d1]) {
-                        int[] scra1 = store_scrambleActions ? sa1[c1] : t1.scrambleAction(c1);
+                        int[] scra1 = store_scrambleActions ? sa1[c1] : uncompressed(R*C,sac1[c1],B);//t1.scrambleAction(c1);
                         int[] scramble = new int[R * C];
                         for (int i = 0; i < R * C; i++)
                             scramble[i] = scra0[scra1[i]];
@@ -174,10 +236,10 @@ public class LoopoverBruteForce {
                             System.out.println("scramble=");
                             List<int[]> $0 = t0.scrambleMvs(c0);
                             List<int[]> $1 = t1.scrambleMvs(c1);
-                            for (int[] mv : $0)
+                            for (int[] mv : $1)
                                 System.out.print(" " + Arrays.toString(mv));
                             System.out.println();
-                            for (int[] mv : $1)
+                            for (int[] mv : $0)
                                 System.out.print(" " + Arrays.toString(mv));
                             System.out.println();
                         }
@@ -246,9 +308,7 @@ public class LoopoverBruteForce {
                                     if (!show)
                                         System.out.println("translation=(" + tr + "," + tc + ")");
                                     System.out.print("orig=");
-                                    for (int[] mv : scrA)
-                                        System.out.print(Arrays.toString(mv) + " ");
-                                    System.out.println();
+                                    System.out.println(str(scrA));
                                     int[] scr = new int[R * C];
                                     for (int i = 0; i < R * C; i++)
                                         scr[i] = inv_transf[ti][scramble[transf[ti][i]]];
@@ -270,29 +330,25 @@ public class LoopoverBruteForce {
                                         move(R, C, perm, tmv);
                                         solveB.add(tmv);
                                     }
-                                    boolean solved = true;
                                     for (int i = 0; i < R * C; i++)
                                         if (t1.soonLocked(inv_transf[ti][i]) && perm[i] != i) {
-                                            solved = false;
+                                            good = false;
                                             break;
                                         }
-                                    if (!solved || show) {
-                                        if (!solved)
+                                    if (!good || show) {
+                                        if (!good)
                                             System.out.println("NOT SOLVED");
                                         if (!show) {
                                             System.out.print("mvs for solving 1st block=");
-                                            for (int[] mv : solveA)
-                                                System.out.print(Arrays.toString(mv) + " ");
-                                            System.out.println();
+                                            System.out.println(str(scrA));
                                         }
                                         System.out.print("mvs for solving 2nd block=");
-                                        for (int[] mv : solveB)
-                                            System.out.print(Arrays.toString(mv) + " ");
-                                        System.out.println("\n" + permStr(R, C, perm));
+                                        System.out.println(str(scrB));
+                                        System.out.println(permStr(R, C, perm));
                                         if (!show)
                                             System.out.println("translation=(" + tr + "," + tc + ")");
                                         System.out.println("original depths: d0=" + d0 + ", d1=" + d1);
-                                        if (!solved)
+                                        if (!good)
                                             return;
                                     }
                                 }
@@ -305,13 +361,223 @@ public class LoopoverBruteForce {
                             System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
                             System.out.println("scramble:");
                             List<int[]> s1 = t1.scrambleMvs(c1);
-                            for (int[] mv : s1)
-                                System.out.print(" " + Arrays.toString(mv));
-                            System.out.println();
+                            System.out.println(str(s1));
                             List<int[]> s0 = t0.scrambleMvs(c0);
-                            for (int[] mv : s0)
+                            System.out.println(str(s0));
+                            System.out.println("[0, x, y] means move row x right y units (left if y is negative)");
+                            System.out.println("[1, x, y] means move column x down y units (up if y is negative)");
+                            return;
+                        }
+                        maxd = Math.max(maxd, bestd);
+                        cnt++;
+                        if (cnt >= mark) {
+                            System.out.printf(form, cnt, System.currentTimeMillis() - st);
+                            mark *= 1.5;
+                        }
+                    }
+                }
+            }
+        System.out.println("improvement time="+(System.currentTimeMillis()-st));
+        System.out.println(cnt+" scrambles of depth>="+depth+" improved to <="+maxd);
+        System.out.println("check="+check+", show="+show+", store_scrambleActions="+store_scrambleActions);
+    }
+    private static int[] union(int M, int[] a, int[] b) {
+        boolean[] e=new boolean[M];
+        for (int i:a)
+            e[i]=true;
+        for (int i:b)
+            e[i]=true;
+        int amt=0;
+        for (boolean i:e)
+            if (i)
+                amt++;
+        int[] out=new int[amt];
+        for (int i=0, v=0; v<M; v++)
+            if (e[v]) {
+                out[i]=v;
+                i++;
+            }
+        return out;
+    }
+    private static void improve(int R, int C,
+                                int[] lr0, int[] lc0, int[] wr0, int[] wc0, int[] wr1, int[] wc1,
+                                int depth, boolean check, boolean show, boolean store_scrambleActions) {
+        //{lr0}x{lc0}->{lr0 union wr0}x{lc0 union wc0}->{lr0 union wr0 union wr1}x{lc0 union wc0 union wc1}
+        long st=System.currentTimeMillis();
+        int B=0;
+        //B=min # s.t. 2^B>=R*C
+        while ((1<<B)<R*C)
+            B++;
+        boolean[] rl=new boolean[R], cl=new boolean[C];
+        for (int r:lr0)
+            rl[r]=true;
+        for (int c:lc0)
+            cl[c]=true;
+        int[] lr1=union(R,lr0,wr0), lc1=union(C,lc0,wc0);
+        Tree t0=new Tree(R,C,lr0,lc0,wr0,wc0),
+                t1=new Tree(R,C,lr1,lc1,wr1,wc1);
+        System.out.println("bfs time="+(System.currentTimeMillis()-st));
+        System.out.println("depth to improve="+depth);
+        st=System.currentTimeMillis();
+        int mind0=depth-t1.maxdepth(), mind1=depth-t0.maxdepth();
+        int[][] codes0=binnedCodes(t0,mind0),
+                codes1=binnedCodes(t1,mind1);
+        int[][] sa0=null,sa1=null;
+        long[][] sac0=null, sac1=null;
+        if (store_scrambleActions) {
+            sa0=scrambleActions(t0,codes0,mind0);
+            sa1=scrambleActions(t1,codes1,mind1);
+        }
+        else {
+            sac0=compressedScrambleActions(t0,codes0,mind0,B);
+            sac1=compressedScrambleActions(t1,codes1,mind1,B);
+        }
+        int[][] solve0=new int[t0.nperms()][];
+        List<int[][]> prefixes=new ArrayList<>();
+        for (int c=0; c<2*R*C; c++) {
+            int[] m=t0.code_move(c);
+            if (m[2]==0
+                    || (m[0]==0 && rl[m[1]])
+                    || (m[0]==1 && cl[m[1]]))
+                continue;
+            prefixes.add(new int[][]{m});
+        }
+        int[] prefixCosts=new int[prefixes.size()];
+        for (int i=0; i<prefixes.size(); i++) {
+            prefixCosts[i]=0;
+            for (int[] p:prefixes.get(i)) {
+                int l=p[0]==0?R:C, d=mod(p[2],l);
+                prefixCosts[i]+=Math.min(d,Math.abs(d-l));
+            }
+            System.out.println(str(prefixes.get(i))+" cost="+prefixCosts[i]);
+        }
+        int[][] prefixActions=new int[prefixes.size()][];
+        for (int pi=0; pi<prefixes.size(); pi++) {
+            int[] act=new int[R*C];
+            for (int i=0; i<R*C; i++)
+                act[i]=i;
+            for (int[] m:prefixes.get(pi))
+                act=t0.moved(act,m);
+            prefixActions[pi]=act;
+        }
+        long tot=0;
+        for (int d0=t0.maxdepth(); d0>=mind0; d0--)
+            for (int d1=t1.maxdepth(); d1>=depth-d0; d1--)
+                tot += (long) codes0[d0].length * codes1[d1].length;
+        System.out.println("tot="+tot);
+        System.out.println("initialization time="+(System.currentTimeMillis()-st));
+        long cnt=0;
+        double mark=1000_000;
+        int maxd=0;
+        String form="%20d%20d%n";
+        System.out.printf("%20s%20s%n","# improved","time");
+        st=System.currentTimeMillis();
+        for (int d0=mind0; d0<=t0.maxdepth(); d0++)
+            for (int d1=depth-d0; d1<=t1.maxdepth(); d1++) {
+                System.out.println("depth pair ["+d0+","+d1+"] started (#scrambles="+((long)codes0[d0].length*codes1[d1].length)+")");
+                for (int c0 : codes0[d0]) {
+                    int[] scra0 = store_scrambleActions ? sa0[c0] : uncompressed(R*C,sac0[c0],B);
+                    for (int c1 : codes1[d1]) {
+                        int[] scra1 = store_scrambleActions ? sa1[c1] : uncompressed(R*C,sac1[c1],B);
+                        int[] scramble = new int[R * C];
+                        for (int i = 0; i < R * C; i++)
+                            scramble[i] = scra0[scra1[i]];
+                        if (show) {
+                            System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
+                            System.out.println("scramble=");
+                            List<int[]> $0 = t0.scrambleMvs(c0);
+                            List<int[]> $1 = t1.scrambleMvs(c1);
+                            for (int[] mv : $1)
                                 System.out.print(" " + Arrays.toString(mv));
                             System.out.println();
+                            for (int[] mv : $0)
+                                System.out.print(" " + Arrays.toString(mv));
+                            System.out.println();
+                        }
+                        int bestd = Integer.MAX_VALUE;
+                        for (int pi=0; pi<prefixes.size(); pi++) {
+                            int totd=prefixCosts[pi];
+                            int[] subscr0=new int[t0.wcnt];
+                            for (int i=0; i<subscr0.length; i++)
+                                subscr0[i]=prefixActions[pi][scramble[t0.id_wloc[i]]];
+                            int code0 = t0.subscramble_code(subscr0), code1 = -1;
+                            boolean skip = false;
+                            if (totd+t0.depth(code0)+t1.maxdepth()<depth) {
+                                totd = depth - 1;
+                                skip = true;
+                            }
+                            else {
+                                if (solve0[code0] == null)
+                                    solve0[code0] = t0.solveAction(code0);
+                                totd += t0.depth(code0);
+                                int[] subscr1 = new int[t1.wcnt];
+                                for (int i = 0; i < t1.wcnt; i++)
+                                    subscr1[i]=solve0[code0][prefixActions[pi][scramble[t1.id_wloc[i]]]];
+                                code1 = t1.subscramble_code(subscr1);
+                                totd += t1.depth(code1);
+                            }
+                            if (check) {
+                                int[][] prefix=prefixes.get(pi);
+                                int[] perm = new int[R * C];
+                                for (int i = 0; i < R * C; i++)
+                                    perm[scramble[i]] = i;
+                                List<int[]> s0=t0.solveMvs(code0);
+                                for (int[] p:prefix)
+                                    move(R,C,perm,p);
+                                for (int[] m:s0)
+                                    move(R,C,perm,m);
+                                boolean good = true;
+                                for (int i = 0; i < R * C; i++)
+                                    if (t0.soonLocked(i) && perm[i] != i) {
+                                        good = false;
+                                        break;
+                                    }
+                                if (!good || show) {
+                                    if (!good)
+                                        System.out.println("INCORRECT");
+                                    System.out.println("orig=\n"+str(R,C,scramble));
+                                    System.out.println("prefix="+str(prefix));
+                                    System.out.println("1st block solve="+str(s0));
+                                    System.out.println(permStr(R, C, perm));
+                                    if (!good)
+                                        return;
+                                }
+                                if (!skip) {
+                                    List<int[]> s1 = t1.solveMvs(code1);
+                                    for (int[] m : s1)
+                                        move(R, C, perm, m);
+                                    for (int i = 0; i < R * C; i++)
+                                        if (t1.soonLocked(i) && perm[i] != i) {
+                                            good = false;
+                                            break;
+                                        }
+                                    if (!good || show) {
+                                        if (!good)
+                                            System.out.println("INCORRECT");
+                                        if (!show) {
+                                            System.out.println("orig=\n" + str(R, C, scramble));
+                                            System.out.println("prefix=" + str(prefix));
+                                            System.out.println("1st block solve="+str(s0));
+                                        }
+                                        System.out.println("2nd block solve="+str(s1));
+                                        System.out.println(permStr(R, C, perm));
+                                        //System.out.println(totd+" "+prefixCosts[pi]+" "+s0.size()+" "+s1.size());
+                                        if (!good)
+                                            return;
+                                    }
+                                }
+                            }
+                            bestd = Math.min(bestd, totd);
+                            if (bestd < depth) break;
+                        }
+                        if (bestd >= depth) {
+                            System.out.println("NOT IMPROVED");
+                            System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
+                            System.out.println("scramble:");
+                            List<int[]> s1 = t1.scrambleMvs(c1);
+                            System.out.println(str(s1));
+                            List<int[]> s0 = t0.scrambleMvs(c0);
+                            System.out.println(str(s0));
                             System.out.println("[0, x, y] means move row x right y units (left if y is negative)");
                             System.out.println("[1, x, y] means move column x down y units (up if y is negative)");
                             return;
@@ -331,9 +597,21 @@ public class LoopoverBruteForce {
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        improveComplete(4,4,
+        /*improveComplete(4,4,
                 new int[] {0,1}, new int[] {0,1,2},
-                27,false,false,true);
+                27,false,false,true);*/
+        /*improve(6,6,new int[] {},new int[] {},
+                new int[] {0,1},new int[] {0,1},
+                new int[] {2},new int[] {2},
+                28,false,false,true);*/ //successful
+        /*improve(5,5,new int[] {},new int[] {},
+                new int[] {0,1},new int[] {0,1,2},
+                new int[] {2},new int[] {3},
+                30,true,false,false);*/ //successful
+        improve(5,5,new int[] {},new int[] {},
+                new int[] {0,1},new int[] {0,1,2},
+                new int[] {2},new int[] {3},
+                29,false,false,false);
         //0x0,2x2,3x3,3x4,4x4,4x5,5x5,6x6
         /*new Tree(6,6,new int[] {0,1,2}, new int[] {0,1,2},
                 new int[0],new int[] {3});
@@ -595,6 +873,13 @@ public class LoopoverBruteForce {
                 tmp.add(mv(c));
             for (int i=tmp.size()-1; i>-1; i--)
                 out.add(tmp.get(i));
+            return out;
+        }
+
+        public List<int[]> solveMvs(int code) {
+            List<int[]> out=new ArrayList<>();
+            for (int c=code; depth(c)>0; c=par(c))
+                out.add(inv(mv(c)));
             return out;
         }
     }
