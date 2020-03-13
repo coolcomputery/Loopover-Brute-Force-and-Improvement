@@ -53,7 +53,9 @@ xxxx
 xxxx (entire board solved)
 ```
 
-If we want to reduce the number of moves it takes to solve this RxC loopover, we can solve transformed versions of the intended regions we want to solve instead of restricting ourselves to start at the top-left corner, ex.
+If we want to reduce the number of moves it takes to solve this RxC loopover subgroup, for each scramble that takes >=D moves to solve with the naive block-building procedure for some number D, we can first add a prefix move to the scramble before doing the block-building.
+
+If the end result of the block-building is the entire Loopover board being solved, another method is to solve transformed versions of the intended regions we want to solve instead of restricting ourselves to start at the top-left corner, such as translations, ex.
 ```
 ....  
 ....  
@@ -88,4 +90,3 @@ xxxx
 xxxx  
 xxxx
 ```
-**NOTE: the trees must eventually result in a fully solved board, otherwise this algorithm is incorrect.**
