@@ -422,16 +422,12 @@ public class LoopoverBruteForce {
         int mind0=depth-t1.maxdepth(), mind1=depth-t0.maxdepth();
         int[][] codes0=binnedCodes(t0,mind0),
                 codes1=binnedCodes(t1,mind1);
-        int[][] sa0=null,sa1=null;
-        long[][] sac0=null, sac1=null;
-        if (store_scrambleActions) {
-            sa0=scrambleActions(t0,codes0,mind0);
+        int[][] sa1=null;
+        long[][] sac1=null;
+        if (store_scrambleActions)
             sa1=scrambleActions(t1,codes1,mind1);
-        }
-        else {
-            sac0=compressedScrambleActions(t0,codes0,mind0,B);
+        else
             sac1=compressedScrambleActions(t1,codes1,mind1,B);
-        }
         int[][] solve0=new int[t0.nperms()][];
         List<int[][]> prefixes=new ArrayList<>();
         for (int c=0; c<2*R*C; c++) {
@@ -464,25 +460,31 @@ public class LoopoverBruteForce {
         for (int d0=t0.maxdepth(); d0>=mind0; d0--)
             for (int d1=t1.maxdepth(); d1>=depth-d0; d1--)
                 tot += (long) codes0[d0].length * codes1[d1].length;
+        long[] s1suff=new long[codes1.length];
+        for (int d=s1suff.length-1; d>=mind1; d--)
+            s1suff[d]=codes1[d].length+(d<s1suff.length-1?s1suff[d+1]:0);
         System.out.println("tot="+tot);
         System.out.println("initialization time="+(System.currentTimeMillis()-st));
-        long cnt=0;
-        double mark=1000_000;
+        long totcnt=0;
         int maxd=0;
-        String form="%20d%20d%n";
-        System.out.printf("%20s%20s%n","# improved","time");
+        String form="%40d%40s%20d%n";
         st=System.currentTimeMillis();
-        for (int d0=mind0; d0<=t0.maxdepth(); d0++)
-            for (int d1=depth-d0; d1<=t1.maxdepth(); d1++) {
-                System.out.println("depth pair ["+d0+","+d1+"] started (#scrambles="+((long)codes0[d0].length*codes1[d1].length)+")");
-                for (int c0 : codes0[d0]) {
-                    int[] scra0 = store_scrambleActions ? sa0[c0] : uncompressed(R*C,sac0[c0],B);
+        for (int d0=mind0; d0<=t0.maxdepth(); d0++) {
+            System.out.println("starting d0="+d0+" (# t0-t1 scrambles="+((long)codes0[d0].length*s1suff[depth-d0])+")");
+            System.out.printf("%40s%40s%20s%n","# t0 scrambles processed of depth d0","# scrambles processed (cumulative)","time");
+            int t0cnt=0;
+            long t01cnt=0;
+            double mark=1000_000;
+            for (int c0 : codes0[d0]) {
+                int[] scra0 = t0.scrambleAction(c0);
+                for (int d1 = depth - d0; d1 <= t1.maxdepth(); d1++) {
                     for (int c1 : codes1[d1]) {
-                        int[] scra1 = store_scrambleActions ? sa1[c1] : uncompressed(R*C,sac1[c1],B);
-                        int[] scramble = new int[R * C];
-                        for (int i = 0; i < R * C; i++)
-                            scramble[i] = scra0[scra1[i]];
+                        int[] scra1 = store_scrambleActions ? sa1[c1] : uncompressed(R * C, sac1[c1], B);
+                        //scramble[i]=scra0[scra1[i]]
                         if (show) {
+                            int[] scramble = new int[R * C];
+                            for (int i = 0; i < R * C; i++)
+                                scramble[i] = scra0[scra1[i]];
                             System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
                             System.out.println("scramble=");
                             List<int[]> $0 = t0.scrambleMvs(c0);
@@ -495,37 +497,39 @@ public class LoopoverBruteForce {
                             System.out.println();
                         }
                         int bestd = Integer.MAX_VALUE;
-                        for (int pi=0; pi<prefixes.size(); pi++) {
-                            int totd=prefixCosts[pi];
-                            int[] subscr0=new int[t0.wcnt];
-                            for (int i=0; i<subscr0.length; i++)
-                                subscr0[i]=prefixActions[pi][scramble[t0.id_wloc[i]]];
+                        for (int pi = 0; pi < prefixes.size(); pi++) {
+                            int totd = prefixCosts[pi];
+                            int[] subscr0 = new int[t0.wcnt];
+                            for (int i = 0; i < subscr0.length; i++)
+                                subscr0[i] = prefixActions[pi][scra0[scra1[t0.id_wloc[i]]]];//scramble[t0.id_wloc[i]]];
                             int code0 = t0.subscramble_code(subscr0), code1 = -1;
                             boolean skip = false;
-                            if (totd+t0.depth(code0)+t1.maxdepth()<depth) {
+                            /*if (totd + t0.depth(code0) + t1.maxdepth() < depth) {
                                 totd = depth - 1;
                                 skip = true;
-                            }
-                            else {
+                            } else */{
                                 if (solve0[code0] == null)
                                     solve0[code0] = t0.solveAction(code0);
                                 totd += t0.depth(code0);
                                 int[] subscr1 = new int[t1.wcnt];
                                 for (int i = 0; i < t1.wcnt; i++)
-                                    subscr1[i]=solve0[code0][prefixActions[pi][scramble[t1.id_wloc[i]]]];
+                                    subscr1[i] = solve0[code0][prefixActions[pi][scra0[scra1[t1.id_wloc[i]]]]];//scramble[t1.id_wloc[i]]]];
                                 code1 = t1.subscramble_code(subscr1);
                                 totd += t1.depth(code1);
                             }
                             if (check) {
-                                int[][] prefix=prefixes.get(pi);
+                                int[] scramble = new int[R * C];
+                                for (int i = 0; i < R * C; i++)
+                                    scramble[i] = scra0[scra1[i]];
+                                int[][] prefix = prefixes.get(pi);
                                 int[] perm = new int[R * C];
                                 for (int i = 0; i < R * C; i++)
                                     perm[scramble[i]] = i;
-                                List<int[]> s0=t0.solveMvs(code0);
-                                for (int[] p:prefix)
-                                    move(R,C,perm,p);
-                                for (int[] m:s0)
-                                    move(R,C,perm,m);
+                                List<int[]> s0 = t0.solveMvs(code0);
+                                for (int[] p : prefix)
+                                    move(R, C, perm, p);
+                                for (int[] m : s0)
+                                    move(R, C, perm, m);
                                 boolean good = true;
                                 for (int i = 0; i < R * C; i++)
                                     if (t0.soonLocked(i) && perm[i] != i) {
@@ -535,9 +539,9 @@ public class LoopoverBruteForce {
                                 if (!good || show) {
                                     if (!good)
                                         System.out.println("INCORRECT");
-                                    System.out.println("orig=\n"+str(R,C,scramble));
-                                    System.out.println("prefix="+str(prefix));
-                                    System.out.println("1st block solve="+str(s0));
+                                    System.out.println("orig=\n" + str(R, C, scramble));
+                                    System.out.println("prefix=" + str(prefix));
+                                    System.out.println("1st block solve=" + str(s0));
                                     System.out.println(permStr(R, C, perm));
                                     if (!good)
                                         return;
@@ -557,9 +561,9 @@ public class LoopoverBruteForce {
                                         if (!show) {
                                             System.out.println("orig=\n" + str(R, C, scramble));
                                             System.out.println("prefix=" + str(prefix));
-                                            System.out.println("1st block solve="+str(s0));
+                                            System.out.println("1st block solve=" + str(s0));
                                         }
-                                        System.out.println("2nd block solve="+str(s1));
+                                        System.out.println("2nd block solve=" + str(s1));
                                         System.out.println(permStr(R, C, perm));
                                         //System.out.println(totd+" "+prefixCosts[pi]+" "+s0.size()+" "+s1.size());
                                         if (!good)
@@ -568,9 +572,12 @@ public class LoopoverBruteForce {
                                 }
                             }
                             bestd = Math.min(bestd, totd);
-                            if (bestd < depth) break;
+                            //if (bestd < depth) break;
                         }
                         if (bestd >= depth) {
+                            int[] scramble = new int[R * C];
+                            for (int i = 0; i < R * C; i++)
+                                scramble[i] = scra0[scra1[i]];
                             System.out.println("NOT IMPROVED");
                             System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
                             System.out.println("scramble:");
@@ -583,46 +590,27 @@ public class LoopoverBruteForce {
                             return;
                         }
                         maxd = Math.max(maxd, bestd);
-                        cnt++;
-                        if (cnt >= mark) {
-                            System.out.printf(form, cnt, System.currentTimeMillis() - st);
+                        totcnt++;
+                        t01cnt++;
+                        if (t01cnt >= mark) {
+                            System.out.printf(form, t0cnt, t01cnt+" ("+totcnt+")", System.currentTimeMillis() - st);
                             mark *= 1.5;
                         }
                     }
                 }
+                t0cnt++;
             }
+        }
         System.out.println("improvement time="+(System.currentTimeMillis()-st));
-        System.out.println(cnt+" scrambles of depth>="+depth+" improved to <="+maxd);
+        System.out.println(totcnt+" scrambles of depth>="+depth+" improved to <="+maxd);
         System.out.println("check="+check+", show="+show+", store_scrambleActions="+store_scrambleActions);
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        /*improveComplete(4,4,
-                new int[] {0,1}, new int[] {0,1,2},
-                27,false,false,true);*/
-        /*improve(6,6,new int[] {},new int[] {},
-                new int[] {0,1},new int[] {0,1},
-                new int[] {2},new int[] {2},
-                28,false,false,true);*/ //successful
-        /*improve(5,5,new int[] {},new int[] {},
-                new int[] {0,1},new int[] {0,1,2},
-                new int[] {2},new int[] {3},
-                30,true,false,false);*/ //successful
-        improve(5,5,new int[] {},new int[] {},
-                new int[] {0,1},new int[] {0,1,2},
-                new int[] {2},new int[] {3},
-                29,false,false,false);
-        //0x0,2x2,3x3,3x4,4x4,4x5,5x5,6x6
-        /*new Tree(6,6,new int[] {0,1,2}, new int[] {0,1,2},
-                new int[0],new int[] {3});
-        new Tree(6,6,new int[] {0,1,2}, new int[] {0,1,2,3},
-                new int[] {3},new int[0]);
-        new Tree(6,6,new int[] {0,1,2,3}, new int[] {0,1,2,3},
-                new int[] {},new int[] {4});
-        new Tree(6,6,new int[] {0,1,2,3}, new int[] {0,1,2,3,4},
-                new int[] {4},new int[] {});
-        new Tree(6,6,new int[] {0,1,2,3,4}, new int[] {0,1,2,3,4},
-                new int[] {5},new int[] {5});*/
+        improve(6,6,new int[] {0,1,2,3},new int[] {0,1,2,3,4},
+                new int[] {4},new int[] {},
+                new int[] {5},new int[] {5},
+                41,false,false,true);
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
     private static class Tree {
@@ -786,9 +774,9 @@ public class LoopoverBruteForce {
                 int v=loc_id[
                         mv[0]==0 && r==mv[1]?
                                 (r*C+mod(c+mv[2],C)):
-                        mv[0]==1 && c==mv[1]?
-                                (mod(r+mv[2],R)*C+c):
-                                i],
+                                mv[0]==1 && c==mv[1]?
+                                        (mod(r+mv[2],R)*C+c):
+                                        i],
                         l=loc[v];
                 int ov=perm[b-1];
                 out+=l;
@@ -875,7 +863,6 @@ public class LoopoverBruteForce {
                 out.add(tmp.get(i));
             return out;
         }
-
         public List<int[]> solveMvs(int code) {
             List<int[]> out=new ArrayList<>();
             for (int c=code; depth(c)>0; c=par(c))
