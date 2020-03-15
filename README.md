@@ -35,7 +35,7 @@ Any RxC loopover can be solved by applying one or more trees onto it, progressiv
 
 The program LoopoverBFS creates this BFS tree for up to a few billion permutations by mapping each permutation to a number, converting it into backwards base 95 (to be efficient in memory), and writing it into onw of several files. Each file tells how deep that permutation is in the BFS. However, it cannot store the actual tree (what the parent permutation of each permutation is).
 
-The program LoopoverBruteForce takes two trees that are intended to be run consecutively, with the added restriction that the first tree takes in an (R,C,[],[]) loopover (where lr and lc are empty sets). It then generates all RxC loopover permutations that take a certain threshold number of moves to solve or more moves, and sees if a transformed version of the permutation can be solved in fewer moves. The transformation must be such that this new set of moves can be converted into moves that solve the original loopover.
+The program LoopoverBruteForce takes two trees that are intended to be run consecutively.. It then generates all RxC loopover permutations that take a certain threshold number of moves to solve or more moves, and sees if a transformed version of the permutation can be solved in fewer moves. The transformation must be such that this new set of moves can be converted into moves that solve the original loopover.
 
 For example, the trees (4,4,[],[],[0,1],[0,1,2]) and (4,4,[0,1],[0,1,2],[2,3],[3]) solve a RxC loopover as follows ("x" denotes regions that are locked, and therefore necessarily solved):
 ```
@@ -55,9 +55,9 @@ xxxx
 xxxx (entire board solved)
 ```
 
-If we want to reduce the number of moves it takes to solve this RxC loopover subgroup, for each scramble that takes >=D moves to solve with the naive block-building procedure for some number D, we can first add a prefix move to the scramble before doing the block-building.
+If we want to reduce the number of moves it takes to solve this RxC loopover subgroup, for each scramble that takes >=D moves to solve with the naive block-building procedure for some number D, we can first add a prefix move to the scramble before doing the block-building (this is the improve() method).
 
-If the end result of the block-building is the entire Loopover board being solved, another method is to solve transformed versions of the intended regions we want to solve instead of restricting ourselves to start at the top-left corner, such as translations, ex.
+If the end result of the block-building is the entire Loopover board being solved, another method is to solve transformed versions of the intended regions we want to solve instead of restricting ourselves to start at the top-left corner, such as translations (this is the improveComplete() method), ex.
 ```
 ....  
 ....  
@@ -75,7 +75,7 @@ xxxx
 xxxx
 ```
 
-Other transformations allowed include rotations (not yet supported) and reflections (supported), ex.
+Other possible transformations include rotations (not yet supported) and reflections (supported), ex.
 ```
 ....  
 ....  
