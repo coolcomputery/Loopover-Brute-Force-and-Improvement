@@ -33,7 +33,9 @@ The tree expands the region of solved cells using as few moves as possible. To d
 
 Any RxC loopover can be solved by applying one or more trees onto it, progressively solving larger and larger regions of it (this is called block-building), and this gives an upper bound on the fewest possible moves needed to solve the original RxC loopover.
 
-This program takes two trees that are intended to be run consecutively, with the added restriction that the first tree takes in an (R,C,[],[]) loopover (where lr and lc are empty sets). It then generates all RxC loopover permutations that take a certain threshold number of moves to solve or more moves, and sees if a transformed version of the permutation can be solved in fewer moves. The transformation must be such that this new set of moves can be converted into moves that solve the original loopover.
+The program LoopoverBFS creates this BFS tree for up to a few billion permutations by mapping each permutation to a number, converting it into backwards base 95 (to be efficient in memory), and writing it into onw of several files. Each file tells how deep that permutation is in the BFS. However, it cannot store the actual tree (what the parent permutation of each permutation is).
+
+The program LoopoverBruteForce takes two trees that are intended to be run consecutively, with the added restriction that the first tree takes in an (R,C,[],[]) loopover (where lr and lc are empty sets). It then generates all RxC loopover permutations that take a certain threshold number of moves to solve or more moves, and sees if a transformed version of the permutation can be solved in fewer moves. The transformation must be such that this new set of moves can be converted into moves that solve the original loopover.
 
 For example, the trees (4,4,[],[],[0,1],[0,1,2]) and (4,4,[0,1],[0,1,2],[2,3],[3]) solve a RxC loopover as follows ("x" denotes regions that are locked, and therefore necessarily solved):
 ```
