@@ -228,7 +228,7 @@ public class LoopoverBruteForce {
         System.out.println("initialization time="+(System.currentTimeMillis()-st));
         long totcnt=0;
         int maxd=0;
-        String form="%20d%20d%n";
+        String form="%40d%40s%20d%n";
         System.out.printf("%20s%20s%n","# improved","time");
         st=System.currentTimeMillis();
         for (int d0=mind0; d0<=t0.maxdepth(); d0++) {
@@ -240,7 +240,6 @@ public class LoopoverBruteForce {
             for (int c0 : codes0[d0]) {
                 int[] scra0 = t0.scrambleAction(c0);
                 for (int d1 = depth - d0; d1 <= t1.maxdepth(); d1++) {
-                    System.out.println("depth pair [" + d0 + "," + d1 + "] started (#scrambles=" + ((long) codes0[d0].length * codes1[d1].length) + ")");
                     for (int c1 : codes1[d1]) {
                         int[] scra1 = store_scrambleActions ? sa1[c1] : uncompressed(R * C, sac1[c1], B);//t1.scrambleAction(c1);
                         int[] scramble = new int[R * C];
