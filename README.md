@@ -75,7 +75,7 @@ xxxx
 xxxx
 ```
 
-Other possible transformations include rotations (not yet supported) and reflections (supported), ex.
+Other possible transformations include rotations<sup>1</sup> and reflections, ex.
 ```
 ....  
 ....  
@@ -92,3 +92,5 @@ xxxx
 xxxx  
 xxxx
 ```
+
+<sup>1</sup>this program uses transpositions combined with reflections, which allows it to create rotations (transposition+reflection)
