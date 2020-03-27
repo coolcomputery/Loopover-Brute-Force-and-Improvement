@@ -72,11 +72,10 @@ public class LoopoverBFS {
                 +Arrays.toString(wr)+"x"+Arrays.toString(wc);
         System.out.println(str);
         System.out.println("total perms="+nperms);
-        if (nperms/64+1>Integer.MAX_VALUE)
-            throw new RuntimeException("Too many permutations.");
-
     }
     public void bfs() throws IOException {
+        if (nperms/64+1>Integer.MAX_VALUE)
+            throw new RuntimeException("Too many permutations.");
         int nlr=0, nlc=0;
         for (boolean b:rl) if (b) nlr++;
         for (boolean b:cl) if (b) nlc++;
