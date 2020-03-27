@@ -180,7 +180,7 @@ public class LoopoverBFS {
         return out;
     }
     private int[] code_subscramble(long code) {
-        int pow=1;
+        long pow=1;
         for (int i=fcnt-wcnt+1; i<fcnt; i++)
             pow*=i;
         int[] perm=new int[fcnt];
