@@ -3,17 +3,27 @@ import java.util.*;
 //improved version of LoopoverUpper from https://github.com/coolcomputery/Loopover-Multi-Phase-God-s-Number
 //similar to the Tree object in LoopoverBruteForce, but stores permutations in files instead of Java arrays
 //for large BFS (up to a few billion permutations)
+//to use, first initialize a LoopoverBFS object with the desired parameters
+//after that, call the bfs() method to perform the BFS
+//      or call the subscramble_code method to convert any number into its scramble
+//          (if converting a string, be sure to first convert it into a number using the static num() method)
+//          (the conversion depends on the parameters put into the object during construction)
+//example of scramble:
+//      if id_wloc={0,1,2,4,5,6} and scramble={10,11,3,2,5,6}, this means that
+//          piece 0 is at location 10 (row 2 col 2),
+//          piece 1 is at location 11 (row 2 col 3),
+//          piece 4 is at location 2 (row 0 col 2), etc.
 public class LoopoverBFS {
-    private static int R, C;
-    private static boolean[] rl, cl, grl, gcl;
-    private static int[] loc_id, id_floc, id_wloc;
-    private static int fcnt, wcnt, maxdepth;
-    private static long nperms;
-    private static String str;
-    private static long[] visited; //acts as a set
-    public static void bfs(int R, int C, int[] lr, int[] lc, int[] wr, int[] wc) throws IOException {
-        LoopoverBFS.R=R;
-        LoopoverBFS.C=C;
+    private int R, C;
+    private boolean[] rl, cl, grl, gcl;
+    private int[] loc_id, id_floc, id_wloc;
+    private int fcnt, wcnt, maxdepth;
+    private long nperms;
+    private String str;
+    private long[] visited; //acts as a set
+    public LoopoverBFS(int R, int C, int[] lr, int[] lc, int[] wr, int[] wc) {
+        this.R=R;
+        this.C=C;
         rl=new boolean[R];
         cl=new boolean[C];
         for (int r:lr)
@@ -54,15 +64,6 @@ public class LoopoverBFS {
                 id++;
             }
         }
-        int[][] moves=new int[2*(R-nlr+C-nlc)][];
-        for (int type=0, id=0; type<2; type++) {
-            for (int coord=0; coord<(type==0?R:C); coord++)
-                if (!(type==0?rl:cl)[coord])
-                    for (int shift=-1; shift<=1; shift+=2) {
-                        moves[id]=new int[] {type,coord,shift};
-                        id++;
-                    }
-        }
         nperms=1;
         for (int i=fcnt; i>fcnt-wcnt; i--)
             nperms*=i;
@@ -73,6 +74,21 @@ public class LoopoverBFS {
         System.out.println("total perms="+nperms);
         if (nperms/64+1>Integer.MAX_VALUE)
             throw new RuntimeException("Too many permutations.");
+
+    }
+    public void bfs() throws IOException {
+        int nlr=0, nlc=0;
+        for (boolean b:rl) if (b) nlr++;
+        for (boolean b:cl) if (b) nlc++;
+        int[][] moves=new int[2*(R-nlr+C-nlc)][];
+        for (int type=0, id=0; type<2; type++) {
+            for (int coord=0; coord<(type==0?R:C); coord++)
+                if (!(type==0?rl:cl)[coord])
+                    for (int shift=-1; shift<=1; shift+=2) {
+                        moves[id]=new int[] {type,coord,shift};
+                        id++;
+                    }
+        }
         visited=new long[(int)(nperms/64+1)];
         maxdepth =0;
         long initcode=subscramble_code(id_wloc);
@@ -118,13 +134,13 @@ public class LoopoverBFS {
                     +" (could be because only even permutations are reached)");
         System.out.println("maxdepth="+ maxdepth);
     }
-    private static void add(long n) {
+    private void add(long n) {
         visited[(int)(n/64)]|=1L<<(n%64);
     }
-    private static boolean contains(long n) {
+    private boolean contains(long n) {
         return (visited[(int)(n/64)]&(1L<<(n%64)))!=0;
     }
-    private static long moved_code(int[] subscramble, int[] mv) {
+    private long moved_code(int[] subscramble, int[] mv) {
         int[] loc=new int[fcnt];
         for (int i=0; i<fcnt; i++)
             loc[i]=i;
@@ -148,7 +164,7 @@ public class LoopoverBFS {
         }
         return out;
     }
-    private static long subscramble_code(int[] subscramble) {
+    private long subscramble_code(int[] subscramble) {
         int[] loc=new int[fcnt];
         for (int i=0; i<fcnt; i++)
             loc[i]=i;
@@ -164,7 +180,7 @@ public class LoopoverBFS {
         }
         return out;
     }
-    private static int[] code_subscramble(long code) {
+    private int[] code_subscramble(long code) {
         int pow=1;
         for (int i=fcnt-wcnt+1; i<fcnt; i++)
             pow*=i;
@@ -188,7 +204,10 @@ public class LoopoverBFS {
     public static void main(String[] args) throws IOException {
         long st=System.currentTimeMillis();
         //bfs(5,5,new int[] {},new int[] {},new int[] {0,1},new int[] {0,1,2});
-        bfs(6,6,new int[] {0,1,2},new int[] {0,1,2},new int[] {3},new int[] {3});
+        //new LoopoverBFS(6,6,new int[] {0,1,2},new int[] {0,1,2},new int[] {3},new int[] {3}).bfs();
+        /*System.out.println(
+                Arrays.toString(new LoopoverBFS(3,3,new int[] {},new int[] {},new int[] {0,1},new int[] {0,1}).code_subscramble(num("Y=")))
+        );//.bfs();*/
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
     private static int mod(int n, int k) {
