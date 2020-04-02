@@ -233,19 +233,23 @@ public class LoopoverBruteForce {
         st=System.currentTimeMillis();
         for (int d0=mind0; d0<=t0.maxdepth(); d0++) {
             System.out.println("starting d0=" + d0 + " (# t0-t1 scrambles=" + ((long) codes0[d0].length * s1suff[depth - d0]) + ")");
-            System.out.printf("%40s%40s%20s%n", "# t0 scrambles processed of depth d0", "# scrambles processed (cumulative)", "time");
-            int t0cnt = 0;
+            System.out.printf("%40s%40s%20s%n", "idx of 1st-stage scramble of depth d0 ", "# scrambles processed (cumulative)", "time");
             long t01cnt = 0;
-            double mark = 1000_000;
-            for (int c0 : codes0[d0]) {
+            double checkpt=0, mark=1000_000;
+            for (int idx=0; idx<codes0[d0].length; idx++) {
+                int c0=codes0[d0][idx];
+                //for (int c0 : codes0[d0]) {
                 int[] scra0 = t0.scrambleAction(c0);
                 for (int d1 = depth - d0; d1 <= t1.maxdepth(); d1++) {
                     for (int c1 : codes1[d1]) {
                         int[] scra1 = store_scrambleActions ? sa1[c1] : uncompressed(R * C, sac1[c1], B);//t1.scrambleAction(c1);
-                        int[] scramble = new int[R * C];
+                        /*int[] scramble = new int[R * C];
                         for (int i = 0; i < R * C; i++)
-                            scramble[i] = scra0[scra1[i]];
+                            scramble[i] = scra0[scra1[i]];*/
                         if (show) {
+                            int[] scramble = new int[R * C];
+                            for (int i = 0; i < R * C; i++)
+                                scramble[i] = scra0[scra1[i]];
                             System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
                             System.out.println("scramble=");
                             List<int[]> $0 = t0.scrambleMvs(c0);
@@ -270,7 +274,7 @@ public class LoopoverBruteForce {
                             int totd = 0;
                             int[] subscr0 = new int[t0.wcnt]; //subscr0[i]=tscr[t0.id_wloc[i]]
                             for (int i = 0; i < t0.wcnt; i++)
-                                subscr0[i] = invtarr[ti * R * C + scramble[tarr[ti * R * C + t0.id_wloc[i]]]];
+                                subscr0[i] = invtarr[ti * R * C + scra0[scra1[tarr[ti * R * C + t0.id_wloc[i]]]]];
                             int code0 = t0.subscramble_code(subscr0), code1 = -1;
                             boolean skip = false;
                             if (t0.depth(code0) + t1.maxdepth() < depth) {
@@ -284,11 +288,14 @@ public class LoopoverBruteForce {
                                 totd += t0.depth(code0);
                                 int[] subscr1 = new int[t1.wcnt];
                                 for (int i = 0; i < t1.wcnt; i++)
-                                    subscr1[i] = solve0[code0][invtarr[ti * R * C + scramble[tarr[ti * R * C + t1.id_wloc[i]]]]];
+                                    subscr1[i] = solve0[code0][invtarr[ti * R * C + scra0[scra1[tarr[ti * R * C + t1.id_wloc[i]]]]]];
                                 code1 = t1.subscramble_code(subscr1);
                                 totd += t1.depth(code1);
                             }
                             if (check) {
+                                int[] scramble = new int[R * C];
+                                for (int i = 0; i < R * C; i++)
+                                    scramble[i] = scra0[scra1[i]];
                                 int flipr = ti & 1, flipc = (ti & 2) == 0 ? 0 : 1;
                                 int flipd, tri;
                                 if (flip) {
@@ -384,6 +391,9 @@ public class LoopoverBruteForce {
                             if (bestd < depth) break;
                         }
                         if (bestd >= depth) {
+                            int[] scramble = new int[R * C];
+                            for (int i = 0; i < R * C; i++)
+                                scramble[i] = scra0[scra1[i]];
                             System.out.println("NOT IMPROVED");
                             System.out.print("d0=" + d0 + ",d1=" + d1 + "\n" + str(R, C, scramble));
                             System.out.println("scramble:");
@@ -399,12 +409,12 @@ public class LoopoverBruteForce {
                         totcnt++;
                         t01cnt++;
                         if (t01cnt >= mark) {
-                            System.out.printf(form, t0cnt, t01cnt+" ("+totcnt+")", System.currentTimeMillis() - st);
-                            mark *= 1.5;
+                            System.out.printf(form, idx, t01cnt+" ("+totcnt+")", System.currentTimeMillis() - st);
+                            checkpt++;
+                            mark=1000_000*Math.exp(Math.sqrt(checkpt));
                         }
                     }
                 }
-                t0cnt++;
             }
         }
         System.out.println("improvement time="+(System.currentTimeMillis()-st));
@@ -501,11 +511,11 @@ public class LoopoverBruteForce {
         st=System.currentTimeMillis();
         for (int d0=mind0; d0<=t0.maxdepth(); d0++) {
             System.out.println("starting d0="+d0+" (# t0-t1 scrambles="+((long)codes0[d0].length*s1suff[depth-d0])+")");
-            System.out.printf("%40s%40s%20s%n","# t0 scrambles processed of depth d0","# scrambles processed (cumulative)","time");
-            int t0cnt=0;
+            System.out.printf("%40s%40s%20s%n", "idx of 1st-stage scramble of depth d0 ", "# scrambles processed (cumulative)", "time");
             long t01cnt=0;
-            double mark=1000_000;
-            for (int c0 : codes0[d0]) {
+            double checkpt=0, mark=1000_000;
+            for (int idx=0; idx<codes0[d0].length; idx++) {
+                int c0=codes0[d0][idx];
                 int[] scra0 = t0.scrambleAction(c0);
                 for (int d1 = depth - d0; d1 <= t1.maxdepth(); d1++) {
                     for (int c1 : codes1[d1]) {
@@ -623,12 +633,12 @@ public class LoopoverBruteForce {
                         totcnt++;
                         t01cnt++;
                         if (t01cnt >= mark) {
-                            System.out.printf(form, t0cnt, t01cnt+" ("+totcnt+")", System.currentTimeMillis() - st);
-                            mark *= 1.5;
+                            System.out.printf(form, idx, t01cnt+" ("+totcnt+")", System.currentTimeMillis() - st);
+                            checkpt++;
+                            mark=1000_000*Math.exp(Math.sqrt(checkpt));
                         }
                     }
                 }
-                t0cnt++;
             }
         }
         System.out.println("improvement time="+(System.currentTimeMillis()-st));
