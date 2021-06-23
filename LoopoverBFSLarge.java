@@ -3,7 +3,7 @@ import java.util.*;
 //improved version of LoopoverUpper from https://github.com/coolcomputery/Loopover-Multi-Phase-God-s-Number
 //similar to the Tree object in LoopoverBruteForce, but stores permutations in files instead of Java arrays
 //for large BFS (up to a few billion permutations)
-//to use, first initialize a LoopoverBFS object with the desired parameters
+//to use, first initialize a LoopoverBFSLarge object with the desired parameters
 //after that, call the bfs() method to perform the BFS
 //      or call the subscramble_code method to convert any number into its scramble
 //          (if converting a string, be sure to first convert it into a number using the static num() method)
@@ -13,15 +13,16 @@ import java.util.*;
 //          piece 0 is at location 10 (row 2 col 2),
 //          piece 1 is at location 11 (row 2 col 3),
 //          piece 4 is at location 2 (row 0 col 2), etc.
-public class LoopoverBFS {
+public class LoopoverBFSLarge {
     private int R, C;
     private boolean[] rl, cl, grl, gcl;
     private int[] loc_id, id_floc, id_wloc;
     private int fcnt, wcnt, maxdepth;
     private long nperms;
     private String str;
-    private long[] visited; //acts as a set
-    public LoopoverBFS(int R, int C, int[] lr, int[] lc, int[] wr, int[] wc) {
+    private long[] visited; //acts as a set (used in method bfs())
+    private int[][] transf, inv_transf;
+    public LoopoverBFSLarge(int R, int C, int[] lr, int[] lc, int[] wr, int[] wc) {
         this.R=R;
         this.C=C;
         rl=new boolean[R];
@@ -200,17 +201,72 @@ public class LoopoverBFS {
             out[i]=id_floc[perm[i+fcnt-wcnt]];
         return out;
     }
+    private void init_symmetries() {
+        boolean flip=R==C;
+        int T=flip?8*R*C:4*R*C;
+        transf=new int[T][R*C];
+        for (int ti=0; ti<T; ti++)
+            for (int l=0; l<R*C; l++) {
+                int nl=(ti&1)==0?l:(R-1-l/C)*C+l%C; //reflect over horizontal center
+                nl=(ti&2)==0?nl:nl/C*C+(C-1-nl%C); //reflect over vertical center
+                if (flip) {
+                    nl=(ti&4)==0?nl:(nl%C)*C+(nl/C); //flip row and col coords
+                    int tri = ti / 8;
+                    transf[ti][l] = transloc(R, C, nl, tri / C, tri % C);
+                }
+                else {
+                    int tri = ti / 4;
+                    transf[ti][l] = transloc(R, C, nl, tri / C, tri % C);
+                }
+            }
+        inv_transf=new int[T][R*C];
+        for (int t=0; t<T; t++) {
+            for (int l=0; l<R*C; l++)
+                inv_transf[t][transf[t][l]]=l;
+        }
+    }
     public static void main(String[] args) throws IOException {
         long st=System.currentTimeMillis();
         //bfs(5,5,new int[] {},new int[] {},new int[] {0,1},new int[] {0,1,2});
-        //new LoopoverBFS(6,6,new int[] {0,1,2},new int[] {0,1,2},new int[] {3},new int[] {3}).bfs();
+        //new LoopoverBFSLarge(6,6,new int[] {0,1,2},new int[] {0,1,2},new int[] {3},new int[] {3}).bfs();
         /*System.out.println(
-                Arrays.toString(new LoopoverBFS(3,3,new int[] {},new int[] {},new int[] {0,1},new int[] {0,1}).code_subscramble(num("Y=")))
+                Arrays.toString(new LoopoverBFSLarge(3,3,new int[] {},new int[] {},new int[] {0,1},new int[] {0,1}).code_subscramble(num("Y=")))
         );//.bfs();*/
+        LoopoverBFSLarge l=new LoopoverBFSLarge(4,4,new int[] {},new int[] {},new int[] {0,1,2,3},new int[] {0,1,2,3});
+        l.init_symmetries();
+        long L=l.nperms/l.transf.length;
+        long maxcode=0;
+        long checkpt=0;
+        double mark=1000000;
+        System.out.printf("%20s%15s%15s%15s%n","amt codes processed","cur code #","cur maxcode","ms elapsed");
+        //code=163830250637
+        for (long code=L, cnt=0; code<l.nperms; code++) {
+            int[] subscr=l.code_subscramble(code);
+            long min=Long.MAX_VALUE;
+            for (int ti=1; ti<l.transf.length; ti++) {
+                int[] tsubscr=new int[subscr.length];
+                for (int i=0; i<subscr.length; i++)
+                    tsubscr[i]=l.inv_transf[ti][subscr[l.transf[ti][i]]];
+                min=Math.min(min,l.subscramble_code(tsubscr));
+                if (min<maxcode || min<L) break;
+            }
+            maxcode=Math.max(maxcode,min);
+            cnt++;
+            if (cnt>=mark) {
+                //PREVIOUS: 1778125100   165237421099   163339136465        7175278
+                System.out.printf("%20d%15d%15d%15d%n",cnt,code,maxcode,System.currentTimeMillis()-st);
+                checkpt++;
+                mark=1000000*Math.exp(Math.sqrt(checkpt));
+            }
+        }
+        System.out.println("maxcode="+maxcode);
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
     private static int mod(int n, int k) {
         return (n%k+k)%k;
+    }
+    private static int transloc(int R, int C, int loc, int tr, int tc) {
+        return mod(loc/C+tr,R)*C+mod(loc%C+tc,C);
     }
     private static StringBuilder bb95(long n) { //BACKWARDS base 95
         if (n==0) return new StringBuilder(" ");
