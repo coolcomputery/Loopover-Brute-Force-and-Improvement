@@ -97,6 +97,28 @@ public class LoopoverBFS {
                         idx++;
                     }
         }
+        //every move is represented with [t,a,r]:
+        //t: type (0=row shift, 1=clm shift)
+        //a: the a-th (row if t==0, else clm)
+        //r: # units to shift (right if t==0, else down)
+        //move sequence reduction
+        //when doing two moves of the same type, one after the other: [t,a,r], [t,b,s]:
+        //WLOG a<=b, or else the two moves can be arranged to satisfy this condition without changing the final scramble
+        //if a==b, then r+s!=0, else the two moves cancel each other out
+        int[][] mvreduc=new int[M+1][];
+        for (int m=0; m<M; m++) {
+            List<Integer> l=new ArrayList<>();
+            for (int m2=0; m2<M; m2++)
+            if (mvs[m][0]!=mvs[m2][0]
+                    ||mvs[m][1]<mvs[m2][1]
+                    ||(mvs[m][1]==mvs[m2][1]&&mvs[m][2]+mvs[m2][2]!=0))
+                l.add(m2);
+            mvreduc[m]=new int[l.size()];
+            for (int i=0; i<l.size(); i++)
+                mvreduc[m][i]=l.get(i);
+        }
+        mvreduc[M]=new int[M];
+        for (int i=0; i<M; i++) mvreduc[M][i]=i;
         //BFS
         data=new long[ncombos]; Arrays.fill(data,-1);
         int[] bfsList=new int[ncombos]; int fsz=0;
@@ -105,11 +127,13 @@ public class LoopoverBFS {
         for (int depth=0, fi=0; fi<fsz; depth++) {
             System.out.println(depth+":"+(fsz-fi));
             for (int sz=fsz; fi<sz; fi++) {
-                int[] scrm=codeCombo(bfsList[fi]);
-                for (int mi=0; mi<M; mi++) {
+                int f=bfsList[fi];
+                int[] scrm=codeCombo(f);
+                int[] mvlist=mvreduc[fi>0?(int)(data[f]%M):M];
+                for (int mi:mvlist) {
                     int nf=mvcomboCode(scrm,mi);
                     if (data[nf]==-1) {
-                        data[nf]=compressed(depth+1,bfsList[fi],mi);
+                        data[nf]=compressed(depth+1,f,mi);
                         bfsList[fsz++]=nf;
                     }
                 }
@@ -177,11 +201,15 @@ public class LoopoverBFS {
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        LoopoverBFS t=new LoopoverBFS(5,5
+        new LoopoverBFS(5,5
                 ,"11111","11111"
                 ,"00111","00011"
                 //,"00011","00001"
         );
+        /*new LoopoverBFS(5,5
+                ,"00111","00011"
+                ,"00011","00001"
+        );*/
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
 }
