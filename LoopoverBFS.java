@@ -22,6 +22,7 @@ public class LoopoverBFS {
     public int[] pcstosolve; //list of pieces this tree tries to solve, in absolute indexing
     private int solvedscrmcode;
     private int[][] mvactions, mvs;
+    private int[][] solveactions;
     public static int[][] mvreduc(int[][] mvs) {
         int M=mvs.length;
         //move sequence reduction
@@ -143,6 +144,7 @@ public class LoopoverBFS {
         //if a==b, then r+s!=0, else the two moves cancel each other out
         int[][] mvreduc=mvreduc(mvs);
         //BFS
+        solveactions=null;
         data=new long[ncombos]; Arrays.fill(data,-1);
         int[] bfsList=new int[ncombos]; int fsz=0;
         bfsList[fsz++]=solvedscrmcode=comboCode(solvedscrm);
@@ -231,7 +233,18 @@ public class LoopoverBFS {
     public List<int[]> solvemvs(int[] scrm) {
         return solvemvs(comboCode(scrm,tofree));
     }
+    public void computeAllActions() {
+        //compute the solveactions of all combos and store them in a table
+        solveactions=new int[ncombos][];
+        for (int code=0; code<ncombos; code++)
+            solveactions[code]=solveaction_help(code);
+    }
     public int[] solveaction(int code) {
+        if (solveactions!=null) return solveactions[code];
+        return solveaction_help(code);
+    }
+    public int[] solveaction_help(int code) {
+        if (data[code]==-1) return null;
         int[] out=new int[Nfree];
         for (int i=0; i<Nfree; i++) out[i]=i;
         for (int c=code; c!=solvedscrmcode; c=par(c)) {
