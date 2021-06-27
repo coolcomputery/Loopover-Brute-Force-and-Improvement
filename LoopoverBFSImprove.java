@@ -19,8 +19,6 @@ public class LoopoverBFSImprove {
         return I;
     }
     private static int[] prodperm(int[] A, int[] B) {
-        //each perm is a list P[] where P[i]=where element i goes to
-        //product permutation of applying perm A, then perm B
         int[] out=new int[A.length];
         for (int i=0; i<A.length; i++)
             out[i]=B[A[i]];
@@ -157,13 +155,6 @@ public class LoopoverBFSImprove {
             String form="%12s%12s%n";
             System.out.printf(form,"elapsed ms","#combos");
             long reps=0;
-            /*int[][][] scrambleacts=new int[T][][];
-            //scrambleacts[t][i]:=inv(trees[t].solveaction(bins[t][i]))
-            for (int t=0; t<T; t++) {
-                scrambleacts[t]=new int[bins[t].length][];
-                for (int i=0; i<bins[t].length; i++)
-                    scrambleacts[t][i]=inv(trees[t].solveaction(bins[t][i]));
-            }*/
             for (; idxs[T-1]<bins[T-1].length;) {
                 int[] codes=new int[T];
                 for (int t=0; t<T; t++)
@@ -171,8 +162,7 @@ public class LoopoverBFSImprove {
                 int[] scrm=solvedscrm.clone();
                 //rescramble this solved state
                 for (int t=T-1; t>-1; t--)
-                    scrm=prodperm(scrm,//scrambleacts[t][idxs[t]]);
-                                        inv(trees[t].solveaction(codes[t])));
+                    scrm=prodperm(scrm,inv(trees[t].solveaction(codes[t])));
                 //scrm[i]=the location where the piece solvedscrm[i] goes to
                 //the locations that all the pieces of trees[t].pcstosolve go to
                 //  are described by the subarray scrm[subarrstart[t]]...scrm[subarrstart[t+1]-1]
@@ -182,10 +172,9 @@ public class LoopoverBFSImprove {
                     int[] nscrm=prodperm(scrm,mvseqactions.get(mvsi));
                     int ntotdepth=mvseqs.get(mvsi).length;
                     /*seqs.clear();
-                    seqs.add(new ArrayList<>());
-                    for (int mi:mvseqs.get(mvsi))
-                        seqs.get(0).add(mvs[mi]);*/
+                    seqs.add(mvseqs.get(mvsi));*/
                     for (int t=0; t<T; t++) {
+                        //TODO: CUT OUT PREFIX OF nscrm AFTER EACH PHASE OF SOLVING
                         int i=subarrstart[t], j=subarrstart[t+1];
                         int[] subarr=new int[j-i];
                         System.arraycopy(nscrm,i,subarr,0,j-i);
@@ -246,37 +235,6 @@ public class LoopoverBFSImprove {
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        /*improve(5,5,
-                new String[] {"11111","00111","00011"},
-                new String[] {"11111","00011","00001"},
-                29,1
-        );*/
-        /*improve(5,5, //0x0,2x2,3x3
-                new String[] {"11111","00111","00011"},
-                new String[] {"11111","00111","00011"},
-                23,1
-                //22,>9
-        );*/
-        /*improve(5,5,
-                new String[] {"11111","00111","00011"},
-                new String[] {"11111","00011","00011"},
-                23,1
-                //22,>1
-        );*/
-        /*improve(5,5, //3x3,4x4,5x5
-                new String[] {"00011","00001","00000"},
-                new String[] {"00011","00001","00000"},
-                //32,1
-                //31,5
-                30,5 //success
-        );*/
-        /*improve(6,6,
-                new String[] {"000011","000001","000000"},
-                new String[] {"000001","000001","000000"},
-                //40,1
-                //38,5
-                37,5?
-        );*/
         improve(6,6,
                 new String[] {"000011","000011","000001"},
                 new String[] {"000011","000001","000001"},
@@ -284,12 +242,6 @@ public class LoopoverBFSImprove {
                 28,7,
                 new boolean[] {true,true}
         );
-        /*improve(6,6,
-                new String[] {"111111","001111","000111"},
-                new String[] {"111111","001111","000111"},
-                //27,1
-                //26,>5
-        );*/
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
 }
