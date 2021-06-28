@@ -1,6 +1,6 @@
 import java.util.*;
 /**
- * given a chain of Loopover states:
+ * given a length-3 chain of Loopover states:
  *      ex. (5,5,{},{})-->(5,5,{0,1,2},{0,1})-->(5,5,{0,1,2,3},{0,1,2})
  * make the BFS trees of every adjacent pair of states;
  * then find the upper bound on the total state transformation
@@ -37,7 +37,7 @@ public class LoopoverBFSImprove {
         for (int mvi:mvseq) out=prodperm(out,mvactions[mvi]);
         return out;
     }
-    private static void improve(int R, int C, String[] Rfrees, String[] Cfrees, int threshold, int P, boolean[] allActions) {
+    private static boolean improve(int R, int C, String[] Rfrees, String[] Cfrees, int threshold, int P, boolean[] allActions) {
         System.out.println(R+"x"+C+"\n"+Arrays.toString(Rfrees)+","+Arrays.toString(Cfrees)+"\nthreshold="+threshold+", P="+P);
         int M=0;
         for (int mr=0; mr<R; mr++) if (Rfrees[0].charAt(mr)=='1') M+=2;
@@ -188,7 +188,7 @@ public class LoopoverBFSImprove {
                         for (int[] mv:tmp) System.out.print(" "+Arrays.toString(mv));
                         System.out.println();
                     }
-                    return;
+                    return false;
                 }
                 /*if (Math.random()<0.000001) {
                     System.out.print(boardStr(solvedscrm,scrm,R,C));
@@ -212,26 +212,23 @@ public class LoopoverBFSImprove {
             }
             System.out.printf(form,System.currentTimeMillis()-st,reps);
         }
+        return true;
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        improve(6,6,
+        if (!improve(6,6,
                 new String[] {"000011","000011","000001"},
                 new String[] {"000011","000001","000001"},
-                28,6,
+                27,6,
                 new boolean[] {true,true}
-        );
-        /*improve(6,6,
-                new String[] {"111111","001111","000111"},
-                new String[] {"111111","001111","000111"},
-                //27,1
-                //26,>5
-        );*/
+        )) {
+            improve(6,6,
+                    new String[] {"000011","000011","000001"},
+                    new String[] {"000011","000001","000001"},
+                    27,7,
+                    new boolean[] {true,true}
+            );
+        }
         System.out.println("time="+(System.currentTimeMillis()-st));
-        //TODO: REVERT BACK TO 2-WAY BFS OPT?
-        //TODO: 6x6:4x5-5x5-6x6: 38,5; 6x6:4x4-4x5-5x5:27,X
-        //TODO: 6x6:0x0-2x2-3x3: <27?
-        //TODO: 3-WAY 6x6:4x4-4x5-5x5-6x6
-        //TODO: 4-WAY 5x5:0x0-2x2-3x3-4x4-5x5
     }
 }
