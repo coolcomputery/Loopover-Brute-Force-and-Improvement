@@ -11,17 +11,30 @@ public class LoopoverBFSImprove {
     private static int mod(int n, int k) {
         return (n%k+k)%k;
     }
-    private static int[] inv(int[] P) {
-        //return inverse permutation of P
-        int[] I=new int[P.length];
-        for (int i=0; i<P.length; i++)
-            I[P[i]]=i;
-        return I;
-    }
     private static int[] prodperm(int[] A, int[] B) {
+        //B is a permutation array
+        //return [ B[A[i]] for all i]
         int[] out=new int[A.length];
         for (int i=0; i<A.length; i++)
             out[i]=B[A[i]];
+        return out;
+    }
+    private static String boardStr(int[] solvedscrm, int[] scrm, int R, int C) {
+        int[] display=new int[R*C]; Arrays.fill(display,-1);
+        for (int i=0; i<scrm.length; i++)
+            display[scrm[i]]=solvedscrm[i];
+        StringBuilder out=new StringBuilder();
+        String form="%"+(R*C<=26?1:3)+"s";
+        for (int r=0; r<R; r++) {
+            for (int c=0; c<C; c++)
+                out.append(String.format(form,display[r*C+c]==-1?".":(R*C<=26?""+(char)('A'+display[r*C+c]):(display[r*C+c]+1))));
+            out.append('\n');
+        }
+        return out.toString();
+    }
+    private static int[] scrambleAction(int R, int C, int[] mvseq, int[][] mvactions) {
+        int[] out=new int[R*C]; for (int i=0; i<R*C; i++) out[i]=i;
+        for (int mvi:mvseq) out=prodperm(out,mvactions[mvi]);
         return out;
     }
     private static void improve(int R, int C, String[] Rfrees, String[] Cfrees, int threshold, int P, boolean[] allActions) {
@@ -53,33 +66,30 @@ public class LoopoverBFSImprove {
                     }
         }
         int[][] mvreduc=LoopoverBFS.mvreduc(mvs);
-        boolean[][] mvreducmat=new boolean[M][M];
-        for (int m=0; m<M; m++) for (int m2:mvreduc[m]) mvreducmat[m][m2]=true;
-        List<int[]> mvseqs=new ArrayList<>();
-        //generate all possible (non-redundant) sequences of moves of length <=P
-        for (int len=1; len<=P; len++) {
-            int[] seq=new int[P];
-            while (seq[P-1]<M) {
-                boolean good=true;
-                for (int p=0; p<P-1&&good; p++)
-                    if (!mvreducmat[seq[p]][seq[p+1]])
-                        good=false;
-                if (good)
-                    mvseqs.add(seq.clone());
-                seq[0]++;
-                for (int p=0; p<P-1&&seq[p]==P; p++) {
-                    seq[p]=0;
-                    seq[p+1]++;
+        //BFS over all nonredundant move sequences of length <=P
+        List<int[]> mvseqs=new ArrayList<>(); List<int[]> mvseqactions=new ArrayList<>(); {
+            List<int[]> mvseqfront=new ArrayList<>();
+            mvseqfront.add(new int[] {});
+            Set<String> seen=new HashSet<>();
+            seen.add(Arrays.toString(scrambleAction(R,C,mvseqfront.get(0),mvactions)));
+            for (int D=0; D<P; D++) {
+                List<int[]> nmvseqfront=new ArrayList<>();
+                for (int[] mseq:mvseqfront)
+                for (int mi:mvreduc[mseq.length==0?M:mseq[D-1]]) {
+                    int[] nmseq=new int[D+1];
+                    System.arraycopy(mseq,0,nmseq,0,D);
+                    nmseq[D]=mi;
+                    int[] action=scrambleAction(R,C,nmseq,mvactions);
+                    String code=Arrays.toString(action);
+                    if (!seen.contains(code)) {
+                        seen.add(code);
+                        nmvseqfront.add(nmseq);
+                        mvseqs.add(nmseq);
+                        mvseqactions.add(action);
+                    }
                 }
+                mvseqfront=nmvseqfront;
             }
-        }
-        List<int[]> mvseqactions=new ArrayList<>();
-        for (int[] seq:mvseqs) {
-            int[] ret=new int[R*C];
-            for (int i=0; i<R*C; i++) ret[i]=i;
-            for (int p=0; p<P; p++)
-                ret=prodperm(ret,mvactions[seq[p]]);
-            mvseqactions.add(ret);
         }
         System.out.println("#mvseqs="+mvseqs.size());
 
@@ -91,24 +101,6 @@ public class LoopoverBFSImprove {
         for (int t=0; t<T-1; t++)
             if (allActions[t])
                 trees[t].computeAllActions();
-        //binnedCodes[t][d] contains the codes of all scrambles for tree t at depth d
-        int[][][] binnedCodes=new int[T][][];
-        for (int t=0; t<T; t++) {
-            int D=trees[t].D, ncombos=trees[t].ncombos;
-            int[] freqs=new int[D];
-            for (int c=0; c<ncombos; c++) {
-                int d=trees[t].depth(c);
-                if (d!=-1) freqs[d]++;
-            }
-            binnedCodes[t]=new int[D][];
-            for (int d=0; d<D; d++)
-                binnedCodes[t][d]=new int[freqs[d]];
-            int[] idxs=new int[D];
-            for (int c=0; c<ncombos; c++) {
-                int d=trees[t].depth(c);
-                if (d!=-1) binnedCodes[t][d][idxs[d]++]=c;
-            }
-        }
         //the collection of all trees creates a total list of pieces that the trees collectively solve
         int tK=0; for (LoopoverBFS t:trees) tK+=t.K;
         int[] solvedscrm=new int[tK];
@@ -128,7 +120,7 @@ public class LoopoverBFSImprove {
                 int totdepth=0; for (int d:depths) totdepth+=d;
                 if (totdepth>threshold) {
                     long ncombos=1;
-                    for (int t=0; t<T; t++) ncombos*=binnedCodes[t][depths[t]].length;
+                    for (int t=0; t<T; t++) ncombos*=trees[t].codesAtDepth(depths[t]).length;
                     totcombos+=ncombos;
                     depthSets.add(depths.clone());
                 }
@@ -143,12 +135,12 @@ public class LoopoverBFSImprove {
         for (int[] depths:depthSets) {
             {
                 long ncombos=1;
-                for (int t=0; t<T; t++) ncombos*=binnedCodes[t][depths[t]].length;
+                for (int t=0; t<T; t++) ncombos*=trees[t].codesAtDepth(depths[t]).length;
                 System.out.println(Arrays.toString(depths)+": ncombos="+ncombos);
             }
             int[][] bins=new int[T][];
             for (int t=0; t<T; t++)
-                bins[t]=binnedCodes[t][depths[t]];
+                bins[t]=trees[t].codesAtDepth(depths[t]);
             int[] idxs=new int[T];
             long st=System.currentTimeMillis();
             long stage=0, mark0=5000, mark=mark0;
@@ -162,7 +154,7 @@ public class LoopoverBFSImprove {
                 int[] scrm=solvedscrm.clone();
                 //rescramble this solved state
                 for (int t=T-1; t>-1; t--)
-                    scrm=prodperm(scrm,inv(trees[t].solveaction(codes[t])));
+                    scrm=prodperm(scrm,trees[t].scrambleaction(codes[t]));
                 //scrm[i]=the location where the piece solvedscrm[i] goes to
                 //the locations that all the pieces of trees[t].pcstosolve go to
                 //  are described by the subarray scrm[subarrstart[t]]...scrm[subarrstart[t+1]-1]
@@ -172,7 +164,9 @@ public class LoopoverBFSImprove {
                     int[] nscrm=prodperm(scrm,mvseqactions.get(mvsi));
                     int ntotdepth=mvseqs.get(mvsi).length;
                     /*seqs.clear();
-                    seqs.add(mvseqs.get(mvsi));*/
+                    seqs.add(new ArrayList<>());
+                    for (int mi:mvseqs.get(mvsi))
+                        seqs.get(0).add(mvs[mi]);*/
                     for (int t=0; t<T; t++) {
                         //TODO: CUT OUT PREFIX OF nscrm AFTER EACH PHASE OF SOLVING
                         int i=subarrstart[t], j=subarrstart[t+1];
@@ -187,14 +181,7 @@ public class LoopoverBFSImprove {
                 }
                 if (!reduced) {
                     System.out.println("NOT REDUCED:");
-                    int[] display=new int[R*C]; Arrays.fill(display,-1);
-                    for (int i=0; i<tK; i++)
-                        display[scrm[i]]=solvedscrm[i];
-                    for (int r=0; r<R; r++) {
-                        for (int c=0; c<C; c++)
-                            System.out.print(display[r*C+c]==-1?'.':(char)('A'+display[r*C+c]));
-                        System.out.println();
-                    }
+                    System.out.print(boardStr(solvedscrm,scrm,R,C));
                     for (int t=0; t<T; t++) {
                         System.out.println("t="+t);
                         List<int[]> tmp=trees[t].solvemvs(codes[t]);
@@ -203,15 +190,8 @@ public class LoopoverBFSImprove {
                     }
                     return;
                 }
-                /*{
-                    int[] display=new int[R*C]; Arrays.fill(display,-1);
-                    for (int i=0; i<tK; i++)
-                        display[scrm[i]]=solvedscrm[i];
-                    for (int r=0; r<R; r++) {
-                        for (int c=0; c<C; c++)
-                            System.out.print(display[r*C+c]==-1?'.':(char)('A'+display[r*C+c]));
-                        System.out.println();
-                    }
+                /*if (Math.random()<0.000001) {
+                    System.out.print(boardStr(solvedscrm,scrm,R,C));
                     for (List<int[]> tmp:seqs) {
                         for (int[] mv:tmp) System.out.print(" "+Arrays.toString(mv));
                         System.out.println();
@@ -238,10 +218,20 @@ public class LoopoverBFSImprove {
         improve(6,6,
                 new String[] {"000011","000011","000001"},
                 new String[] {"000011","000001","000001"},
-                //28,>6
-                28,7,
+                28,6,
                 new boolean[] {true,true}
         );
+        /*improve(6,6,
+                new String[] {"111111","001111","000111"},
+                new String[] {"111111","001111","000111"},
+                //27,1
+                //26,>5
+        );*/
         System.out.println("time="+(System.currentTimeMillis()-st));
+        //TODO: REVERT BACK TO 2-WAY BFS OPT?
+        //TODO: 6x6:4x5-5x5-6x6: 38,5; 6x6:4x4-4x5-5x5:27,X
+        //TODO: 6x6:0x0-2x2-3x3: <27?
+        //TODO: 3-WAY 6x6:4x4-4x5-5x5-6x6
+        //TODO: 4-WAY 5x5:0x0-2x2-3x3-4x4-5x5
     }
 }
