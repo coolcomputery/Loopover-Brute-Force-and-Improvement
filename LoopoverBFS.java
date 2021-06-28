@@ -22,7 +22,7 @@ public class LoopoverBFS {
     public int[] pcstosolve; //list of pieces this tree tries to solve, in absolute indexing
     private int solvedscrmcode;
     private int[][] mvactions, mvs;
-    private int[][] solveactions;
+    private int[][] solveactions, scrambleactions;
     public static int[][] mvreduc(int[][] mvs) {
         int M=mvs.length;
         //move sequence reduction
@@ -49,6 +49,7 @@ public class LoopoverBFS {
     public int ncombos;
     //bfs stuff
     private long[] data;
+    public List<int[]> fronts; //BFS fronts
     public int D;
     //c-->(depth,move from parent combo to c,parent combo)
     private long compressed(int depth, int parent, int move) {
@@ -138,36 +139,41 @@ public class LoopoverBFS {
                         idx++;
                     }
         }
-        //move sequence reduction
-        //when doing two moves of the same type, one after the other: [t,a,r], [t,b,s]:
-        //WLOG a<=b, or else the two moves can be arranged to satisfy this condition without changing the final scramble
-        //if a==b, then r+s!=0, else the two moves cancel each other out
         int[][] mvreduc=mvreduc(mvs);
         //BFS
         solveactions=null;
         data=new long[ncombos]; Arrays.fill(data,-1);
-        int[] bfsList=new int[ncombos]; int fsz=0;
-        bfsList[fsz++]=solvedscrmcode=comboCode(solvedscrm);
-        data[bfsList[0]]=0;
-        int fi;
-        for (D=0, fi=0; fi<fsz; D++) {
-            System.out.println(D+":"+(fsz-fi));
-            for (int sz=fsz; fi<sz; fi++) {
-                int f=bfsList[fi];
+        fronts=new ArrayList<>();
+        solvedscrmcode=comboCode(solvedscrm);
+        fronts.add(new int[] {solvedscrmcode});
+        data[solvedscrmcode]=0;
+        int[] nfront=new int[ncombos];
+        int reached=0;
+        for (D=0;; D++) {
+            if (fronts.get(D).length==0) break;
+            reached+=fronts.get(D).length;
+            System.out.println(D+":"+fronts.get(D).length);
+            int sz=0;
+            for (int f:fronts.get(D)) {
                 int[] scrm=codeCombo(f);
-                int[] mvlist=mvreduc[fi>0?mvi(f):M];
+                int[] mvlist=mvreduc[f==solvedscrmcode?M:mvi(f)];
                 for (int mi:mvlist) {
                     int nf=comboCode(scrm,mvactions[mi]);
                     if (data[nf]==-1) {
                         data[nf]=compressed(D+1,f,mi);
-                        bfsList[fsz++]=nf;
+                        nfront[sz++]=nf;
                     }
                 }
             }
+            fronts.add(new int[sz]);
+            System.arraycopy(nfront,0,fronts.get(D+1),0,sz);
         }
-        System.out.println("#reached="+fsz);
+        System.out.println("#reached="+reached);
         System.out.println("D="+D);
         System.out.println("total time="+(System.currentTimeMillis()-st));
+    }
+    public int[] codesAtDepth(int d) {
+        return fronts.get(d);
     }
     /*
     encoding ordered combinations
@@ -236,14 +242,16 @@ public class LoopoverBFS {
     public void computeAllActions() {
         //compute the solveactions of all combos and store them in a table
         solveactions=new int[ncombos][];
-        for (int code=0; code<ncombos; code++)
+        scrambleactions=new int[ncombos][];
+        for (int code=0; code<ncombos; code++) {
             solveactions[code]=solveaction_help(code);
+            scrambleactions[code]=inv(solveactions[code]);
+        }
     }
     public int[] solveaction(int code) {
-        if (solveactions!=null) return solveactions[code];
-        return solveaction_help(code);
+        return solveactions==null?solveaction_help(code):solveactions[code];
     }
-    public int[] solveaction_help(int code) {
+    private int[] solveaction_help(int code) {
         if (data[code]==-1) return null;
         int[] out=new int[Nfree];
         for (int i=0; i<Nfree; i++) out[i]=i;
@@ -255,6 +263,9 @@ public class LoopoverBFS {
             out=nout;
         }
         return mva2abs(out);
+    }
+    public int[] scrambleaction(int code) {
+        return scrambleactions==null?inv(solveaction(code)):scrambleactions[code];
     }
     public List<int[]> solvemvs(int code) {
         List<int[]> out=new ArrayList<>();
