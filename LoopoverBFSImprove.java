@@ -1,6 +1,6 @@
 import java.util.*;
 /**
- * given a length-3 chain of Loopover states:
+ * given a chain of Loopover states:
  *      ex. (5,5,{},{})-->(5,5,{0,1,2},{0,1})-->(5,5,{0,1,2,3},{0,1,2})
  * make the BFS trees of every adjacent pair of states;
  * then find the upper bound on the total state transformation
@@ -37,12 +37,36 @@ public class LoopoverBFSImprove {
         for (int mvi:mvseq) out=prodperm(out,mvactions[mvi]);
         return out;
     }
-    private static boolean improve(int R, int C, String[] Rfrees, String[] Cfrees, int threshold, int P, boolean[] allActions) {
-        System.out.println(R+"x"+C+"\n"+Arrays.toString(Rfrees)+","+Arrays.toString(Cfrees)+"\nthreshold="+threshold+", P="+P);
-        int M=0;
+    private int R, C, T, tK, M;
+    private LoopoverBFS[] trees;
+    private int[] solvedscrm, subarrstart;
+    private int[][] mvs, mvactions, mvreduc;
+    public LoopoverBFSImprove(int R, int C, String[] Rfrees, String[] Cfrees, boolean[] allActions) {
+        System.out.println(R+"x"+C+"\n"+Arrays.toString(Rfrees)+","+Arrays.toString(Cfrees));
+        this.R=R; this.C=C;
+        T=Rfrees.length-1;
+        trees=new LoopoverBFS[T];
+        for (int si=0; si<Rfrees.length-1; si++)
+            trees[si]=new LoopoverBFS(R,C,Rfrees[si],Cfrees[si],Rfrees[si+1],Cfrees[si+1]);
+        for (int t=0; t<T-1; t++)
+            if (allActions[t])
+                trees[t].computeAllActions();
+        //the collection of all trees creates a total list of pieces that the trees collectively solve
+        tK=0; for (LoopoverBFS t:trees) tK+=t.K;
+        solvedscrm=new int[tK];
+        subarrstart=new int[T+1];
+        for (int t=0, idx=0; t<T; t++) {
+            subarrstart[t]=idx;
+            for (int v:trees[t].pcstosolve)
+                solvedscrm[idx++]=v;
+        }
+        subarrstart[T]=tK;
+        System.out.println("solvedscrm="+Arrays.toString(solvedscrm)+
+                "\nsubarrstart="+Arrays.toString(subarrstart));
+        M=0;
         for (int mr=0; mr<R; mr++) if (Rfrees[0].charAt(mr)=='1') M+=2;
         for (int mc=0; mc<C; mc++) if (Cfrees[0].charAt(mc)=='1') M+=2;
-        int[][] mvs=new int[M][], mvactions=new int[M][]; {
+        mvs=new int[M][]; mvactions=new int[M][]; {
             int idx=0;
             for (int mr=0; mr<R; mr++)
                 if (Rfrees[0].charAt(mr)=='1')
@@ -65,7 +89,10 @@ public class LoopoverBFSImprove {
                         idx++;
                     }
         }
-        int[][] mvreduc=LoopoverBFS.mvreduc(mvs);
+        mvreduc=LoopoverBFS.mvreduc(mvs);
+    }
+    private boolean improve(int threshold, int P) {
+        System.out.println("threshold="+threshold+", P="+P);
         //BFS over all nonredundant move sequences of length <=P
         List<int[]> mvseqs=new ArrayList<>(); List<int[]> mvseqactions=new ArrayList<>(); {
             List<int[]> mvseqfront=new ArrayList<>();
@@ -93,26 +120,6 @@ public class LoopoverBFSImprove {
         }
         System.out.println("#mvseqs="+mvseqs.size());
 
-        //create BFS trees
-        int T=Rfrees.length-1;
-        LoopoverBFS[] trees=new LoopoverBFS[T];
-        for (int si=0; si<Rfrees.length-1; si++)
-            trees[si]=new LoopoverBFS(R,C,Rfrees[si],Cfrees[si],Rfrees[si+1],Cfrees[si+1]);
-        for (int t=0; t<T-1; t++)
-            if (allActions[t])
-                trees[t].computeAllActions();
-        //the collection of all trees creates a total list of pieces that the trees collectively solve
-        int tK=0; for (LoopoverBFS t:trees) tK+=t.K;
-        int[] solvedscrm=new int[tK];
-        int[] subarrstart=new int[T+1];
-        for (int t=0, idx=0; t<T; t++) {
-            subarrstart[t]=idx;
-            for (int v:trees[t].pcstosolve)
-                solvedscrm[idx++]=v;
-        }
-        subarrstart[T]=tK;
-        System.out.println("solvedscrm="+Arrays.toString(solvedscrm));
-        System.out.println("subarrstart="+Arrays.toString(subarrstart));
         List<int[]> depthSets=new ArrayList<>(); {
             long totcombos=0;
             int[] depths=new int[T];
@@ -216,18 +223,15 @@ public class LoopoverBFSImprove {
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        if (!improve(6,6,
-                new String[] {"000011","000011","000001"},
-                new String[] {"000011","000001","000001"},
-                27,6,
+        LoopoverBFSImprove improver=new LoopoverBFSImprove(6,6,
+                new String[] {"111111","001111","000111"},
+                new String[] {"111111","001111","000111"},
                 new boolean[] {true,true}
-        )) {
-            improve(6,6,
-                    new String[] {"000011","000011","000001"},
-                    new String[] {"000011","000001","000001"},
-                    27,7,
-                    new boolean[] {true,true}
-            );
+        );
+        for (int P=1; P<=5; P++) {
+            if (!improver.improve(26,P))
+                System.out.print("\n\n\n\n\n\n");
+            else break;
         }
         System.out.println("time="+(System.currentTimeMillis()-st));
     }
