@@ -126,7 +126,7 @@ public class LoopoverBFSImprove {
         for (int[] depths:depthSets) {
             int d0=depths[0], d1=depths[1];
             int[] bin0=tree0.codesAtDepth(d0), bin1=tree1.codesAtDepth(d1);
-            System.out.println(Arrays.toString(depths)+": ncombos="+bin0.length*bin1.length);
+            System.out.println(Arrays.toString(depths)+": ncombos="+bin0.length*(long)bin1.length);
             long st=System.currentTimeMillis();
             if (!computeAll[0]) tree0.computeActions(d0);
             if (!computeAll[1]) tree1.computeActions(d1);
@@ -207,10 +207,11 @@ public class LoopoverBFSImprove {
         long st=System.currentTimeMillis();
         LoopoverBFSImprove improver=new LoopoverBFSImprove(5,5,
                 new String[] {"11111","00111","00011"},new String[] {"11111","00111","00011"},
+                //new String[] {"00011","00001","00000"},new String[] {"00011","00001","00000"},
                 new boolean[] {true,true}
         );
-        for (int P=1; P<=21; P++) {
-            if (!improver.improve(21,P))
+        for (int P=1; P<=20; P++) {
+            if (!improver.improve(20,P))
                 System.out.println("--------------------------------\n");
             else break;
         }
