@@ -141,7 +141,8 @@ public class LoopoverBFS {
         }
         int[][] mvreduc=mvreduc(mvs);
         //BFS
-        solveactions=null;
+        solveactions=new int[ncombos][];
+        scrambleactions=new int[ncombos][];
         data=new long[ncombos]; Arrays.fill(data,-1);
         fronts=new ArrayList<>();
         solvedscrmcode=comboCode(solvedscrm);
@@ -239,20 +240,25 @@ public class LoopoverBFS {
     public List<int[]> solvemvs(int[] scrm) {
         return solvemvs(comboCode(scrm,tofree));
     }
-    public void computeAllActions() {
-        //compute the solveactions of all combos and store them in a table
-        solveactions=new int[ncombos][];
-        scrambleactions=new int[ncombos][];
-        for (int code=0; code<ncombos; code++) {
+    public void computeActions(int D) {
+        //compute the solveactions of all combos with depth D and store them in a table
+        for (int code:codesAtDepth(D)) {
             solveactions[code]=solveaction_help(code);
             scrambleactions[code]=inv(solveactions[code]);
         }
     }
+    public void clearActions(int D) { //undo the previous method
+        //this is to avoid using too much Java heap space
+        for (int code:codesAtDepth(D)) {
+            solveactions[code]=null;
+            scrambleactions[code]=null;
+        }
+    }
     public int[] solveaction(int code) {
-        return solveactions==null?solveaction_help(code):solveactions[code];
+        return solveactions[code]==null?solveaction_help(code):solveactions[code];
     }
     private int[] solveaction_help(int code) {
-        if (data[code]==-1) return null;
+        if (data[code]==-1) throw new RuntimeException("Invalid combination code: "+code);
         int[] out=new int[Nfree];
         for (int i=0; i<Nfree; i++) out[i]=i;
         for (int c=code; c!=solvedscrmcode; c=par(c)) {
@@ -265,7 +271,7 @@ public class LoopoverBFS {
         return mva2abs(out);
     }
     public int[] scrambleaction(int code) {
-        return scrambleactions==null?inv(solveaction(code)):scrambleactions[code];
+        return scrambleactions[code]==null?inv(solveaction(code)):scrambleactions[code];
     }
     public List<int[]> solvemvs(int code) {
         List<int[]> out=new ArrayList<>();
