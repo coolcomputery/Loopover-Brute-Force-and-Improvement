@@ -9,18 +9,30 @@ public class LoopoverBFS {
             out[i]=s.charAt(i)=='1';
         return out;
     }
+    public static boolean[][] parseState(String s) {
+        String[] pcs=s.split("x");
+        if (pcs.length!=2) throw new RuntimeException("Not in 2 pieces: "+s);
+        return new boolean[][] {mask(pcs[0]),mask(pcs[1])};
+    }
+    private static boolean free(boolean[][] boardState, int r, int c) {
+        return boardState[0][r]||boardState[1][c];
+    }
+    public static String mvseqStr(List<int[]> S) {
+        StringBuilder str=new StringBuilder();
+        for (int[] m:S)
+            str.append(" ").append(m[0]==0?"R":"C").append(m[1]).append(m[2]==1?"":m[2]==-1?"'":("("+m[2]+")"));
+        return str.toString();
+    }
     //define absolute indexing as mapping coordinate (r,c) to index r*C+c
     //every scramble is represented by an array L[], where piece i is at location L[i]
     private int R, C;
     private int Nfree;
-    private boolean[] Rfree, Cfree;
+    private boolean[][] rcfree;
     //a location (r,c) is free iff Rfree[r]||Cfree[c]
     private int[] tofree, freeto;
     //tofree[r*C+c]=i, where free location (r,c) is assigned to index i
     public int K;
-    private int[] solvedscrm;
     public int[] pcstosolve; //list of pieces this tree tries to solve, in absolute indexing
-    private int solvedscrmcode;
     private int[][] mvactions, mvs;
     private int[][] solveactions, scrambleactions;
     public static int[][] mvreduc(int[][] mvs) {
@@ -49,8 +61,8 @@ public class LoopoverBFS {
     public int ncombos;
     //bfs stuff
     private long[] data;
-    public List<int[]> fronts; //BFS fronts
-    public int D;
+    private List<int[]> fronts; //BFS fronts
+    public int D; //(largest depth of BFS tree)+1
     //c-->(depth,move from parent combo to c,parent combo)
     private long compressed(int depth, int parent, int move) {
         return ((long)depth*M+move)*ncombos+parent;
@@ -64,40 +76,46 @@ public class LoopoverBFS {
     private int mvi(int code) {
         return data[code]==-1?-1:(int)((data[code]/ncombos)%M);
     }
-    public LoopoverBFS(int R, int C, String rf0, String cf0, String rf1, String cf1) {
+    public LoopoverBFS(int R, int C, String state0, String state1) {
         long st=System.currentTimeMillis();
         this.R=R; this.C=C;
-        Rfree=mask(rf0); Cfree=mask(cf0);
+        rcfree=parseState(state0);
         tofree=new int[R*C]; freeto=new int[R*C];
         Nfree=0;
         for (int r=0; r<R; r++)
             for (int c=0; c<C; c++)
-                if (Rfree[r]||Cfree[c]) {
+                if (free(rcfree,r,c)) {
                     tofree[r*C+c]=Nfree;
                     freeto[Nfree]=r*C+c;
                     Nfree++;
                 }
                 else tofree[r*C+c]=-1;
-        for (int r=0; r<R; r++) {
-            for (int c=0; c<C; c++)
-                System.out.printf("%3d",tofree[r*C+c]);
-            System.out.println();
+        {
+            int[] tmp=new int[Nfree];
+            System.arraycopy(freeto,0,tmp,0,Nfree);
+            freeto=tmp;
         }
-        boolean[] Rnfree=mask(rf1), Cnfree=mask(cf1);
+        boolean[][] nrcfree=parseState(state1);
         K=0;
         for (int r=0; r<R; r++)
             for (int c=0; c<C; c++)
-                if ((Rfree[r]||Cfree[c])&&!(Rnfree[r]||Cnfree[c]))
+                if (free(rcfree,r,c)&&!free(nrcfree,r,c))
                     K++;
-        solvedscrm=new int[K];
+        pcstosolve=new int[K];
         for (int r=0, idx=0; r<R; r++)
             for (int c=0; c<C; c++)
-                if ((Rfree[r]||Cfree[c])&&!(Rnfree[r]||Cnfree[c]))
-                    solvedscrm[idx++]=tofree[r*C+c];
-        pcstosolve=new int[K];
-        for (int i=0; i<K; i++)
-            pcstosolve[i]=freeto[solvedscrm[i]];
-        System.out.println(Arrays.toString(solvedscrm));
+                if (free(rcfree,r,c)&&!free(nrcfree,r,c))
+                    pcstosolve[idx++]=r*C+c;
+        for (int r=0; r<R; r++) {
+            for (int c=0; c<C; c++)
+                System.out.printf("%4s",
+                        free(rcfree,r,c)?
+                                ((free(nrcfree,r,c)?"":"'")+tofree[r*C+c]):
+                                "X"
+                        //': piece that this BFS tree tries to solve; *: gripped piece
+                );
+            System.out.println();
+        }
         {
             long tmp=1;
             for (int rep=0; rep<K; rep++) tmp*=Nfree-rep;
@@ -111,31 +129,31 @@ public class LoopoverBFS {
         //a: the a-th (row if t==0, else clm)
         //r: # units to shift (right if t==0, else down)
         M=0;
-        for (boolean b:Rfree) if (b) M+=2;
-        for (boolean b:Cfree) if (b) M+=2;
+        for (boolean[] axis:rcfree)
+            for (boolean b:axis) if (b) M+=2;
         mvactions=new int[M][]; mvs=new int[M][]; {
             //mvactions[m][i]=free loc. that i-th free loc. will go to after move m is applied
             int idx=0;
             for (int mr=0; mr<R; mr++)
-                if (Rfree[mr])
+                if (rcfree[0][mr])
                     for (int s=-1; s<=1; s+=2) {
                         mvs[idx]=new int[] {0,mr,s};
                         mvactions[idx]=new int[Nfree];
-                        for (int r=0; r<R; r++)
-                            for (int c=0; c<C; c++)
-                                if (Rfree[r]||Cfree[c])
-                                    mvactions[idx][tofree[r*C+c]]=tofree[r*C+(r==mr?mod(c+s,C):c)];
+                        for (int i=0; i<Nfree; i++) {
+                            int r=freeto[i]/C, c=freeto[i]%C;
+                            mvactions[idx][i]=tofree[r*C+(r==mr?mod(c+s,C):c)];
+                        }
                         idx++;
                     }
             for (int mc=0; mc<C; mc++)
-                if (Cfree[mc])
+                if (rcfree[1][mc])
                     for (int s=-1; s<=1; s+=2) {
                         mvs[idx]=new int[] {1,mc,s};
                         mvactions[idx]=new int[Nfree];
-                        for (int r=0; r<R; r++)
-                            for (int c=0; c<C; c++)
-                                if (Rfree[r]||Cfree[c])
-                                    mvactions[idx][tofree[r*C+c]]=tofree[(c==mc?mod(r+s,R):r)*C+c];
+                        for (int i=0; i<Nfree; i++) {
+                            int r=freeto[i]/C, c=freeto[i]%C;
+                            mvactions[idx][i]=tofree[(c==mc?mod(r+s,R):r)*C+c];
+                        }
                         idx++;
                     }
         }
@@ -145,9 +163,15 @@ public class LoopoverBFS {
         scrambleactions=new int[ncombos][];
         data=new long[ncombos]; Arrays.fill(data,-1);
         fronts=new ArrayList<>();
-        solvedscrmcode=comboCode(solvedscrm);
-        fronts.add(new int[] {solvedscrmcode});
-        data[solvedscrmcode]=0;
+        {
+            int[] solvedscrm=new int[K];
+            for (int i=0; i<K; i++)
+                solvedscrm[i]=tofree[pcstosolve[i]];
+            System.out.println(Arrays.toString(solvedscrm));
+            int solvedscrmcode=comboCode(solvedscrm);
+            fronts.add(new int[] {solvedscrmcode});
+            data[solvedscrmcode]=0;
+        }
         int[] nfront=new int[ncombos];
         int reached=0;
         for (D=0;; D++) {
@@ -157,7 +181,7 @@ public class LoopoverBFS {
             int sz=0;
             for (int f:fronts.get(D)) {
                 int[] scrm=codeCombo(f);
-                int[] mvlist=mvreduc[f==solvedscrmcode?M:mvi(f)];
+                int[] mvlist=mvreduc[D==0?M:mvi(f)];
                 for (int mi:mvlist) {
                     int nf=comboCode(scrm,mvactions[mi]);
                     if (data[nf]==-1) {
@@ -261,7 +285,7 @@ public class LoopoverBFS {
         if (data[code]==-1) throw new RuntimeException("Invalid combination code: "+code);
         int[] out=new int[Nfree];
         for (int i=0; i<Nfree; i++) out[i]=i;
-        for (int c=code; c!=solvedscrmcode; c=par(c)) {
+        for (int c=code; depth(c)>0; c=par(c)) {
             int[] mva=inv(mvactions[mvi(c)]);
             int[] nout=new int[Nfree];
             for (int i=0; i<Nfree; i++)
@@ -275,7 +299,7 @@ public class LoopoverBFS {
     }
     public List<int[]> solvemvs(int code) {
         List<int[]> out=new ArrayList<>();
-        for (int c=code; c!=solvedscrmcode; c=par(c)) {
+        for (int c=code; depth(c)>0; c=par(c)) {
             int[] mv=mvs[mvi(c)];
             out.add(new int[] {mv[0],mv[1],-mv[2]});
         }
@@ -295,5 +319,9 @@ public class LoopoverBFS {
         for (int a=0; a<R*C; a++)
             out[a]=tofree[a]==-1?a:freeto[mva[tofree[a]]];
         return out;
+    }
+    public static void main(String[] args) {
+        new LoopoverBFS(5,5,"11111x11111","00111x00111");
+        new LoopoverBFS(5,5,"00111x00111","00011x00011");
     }
 }
