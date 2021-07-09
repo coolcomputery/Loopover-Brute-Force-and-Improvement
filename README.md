@@ -6,7 +6,7 @@ This program is intended to take a block-building approach to solving Loopover (
 
 A RxC Loopover is a grid of cells with R rows and C columns, where each row and column can be slided, and each cell has a unique number (see https://loopover.gitlab.io/). The objective is to take a loopover with the numbers scrambled and slide them back into the solved order. Here rows will be indexed from 0 to R-1 (top-to-bottom), and columns will be indexed from 0 to C-1 (left-to-right).
 
-A (R,C,lr,lc) loopover, where lr and lc are sets of numbers, is a RxC loopover but with every row with its index in lr and every column with its index in lc being locked (unable to move). For example, a (4,4,[0,1],[0,2]) loopover is a 4x4 loopover but with rows 0 and 1 locked and columns 0 and 2 unable to move. The below grid shows the places that cannot move as a result of these restrictions, which will be called "locked cells", as "x"s:
+A RxC Loopover in the state (lr,lc), where lr and lc are binary strings of lengths R and C respectively, is a RxC loopover but with row r locked if lr[r]==0 and column c locked if lr[c]==0. Thus, every piece (r,c) s.t. lr[r]==0 and lc[c]==0 is locked, i.e. it cannot be moved. For example, a 4x4 Loopover in the state (0011,0101) looks like the following, where each locked piece is marked with an "x":
 
 ```
 x.x.  
@@ -15,31 +15,28 @@ x.x.
 ....
 ```
 
-A (R,C,lr,lc,wr,wc) tree is an object that takes any (R,C,lr,lc) loopover with all its locked cells solved and expands the region of solved cells. More formally, it shifts the rows and columns that are able to move, such that every cell with its row index in the set union(lr,wr) and its column index in the set union(lc,wc) is solved. For example, the (4,4,[0,1],[0,2],[2],[3]) takes a (4,4,[0,1],[0,2]) loopover with all its locked cells solved and expands the solved region into the set of locked cells of the (4,4,[0,1,2],[0,2,3]) loopover.
+A tree over a RxC Loopover uses BFS to optimally solve every RxC Loopover in a starting state (lr0,lc0) to an ending state (lr1,lc1). For example, a tree over a 4x4 Loopover from (0011,0101) to (0001,0100) looks like the following, where locked pieces are marked with "x" and pieces that will be solved by the tree are marked with "'":
 ```
 x.x.  
 x.x.  
 ....  
 ....  
-becomes  
-x.x*  
-x.x*  
-*.**  
+--> 
+x.x'  
+x.x'  
+'.''  
 ....  
-(newly solved cells are marked with "*")
 ```
 
-The tree expands the region of solved cells using as few moves as possible. To do this, it performs a breadth-first search from the goal (where all cells in the row set union(lr,wr) and column set union(lc,wc) are solved) to all possible permutations of the (R,C,lr,lc) loopover, but only paying attention to the cells that will become newly solved.
+Any RxC loopover can be solved by applying one or more trees onto it, progressively solving larger and larger regions of it (this is called block-building), and this gives an upper bound on the "God's number" of RxC Loopover, i.e. the fewest moves necessary to be able to solve every scramble of RxC Loopover.
 
-Any RxC loopover can be solved by applying one or more trees onto it, progressively solving larger and larger regions of it (this is called block-building), and this gives an upper bound on the fewest possible moves needed to solve the original RxC loopover.
+The classes ``LoopoverBruteForce.Tree`` and ``LoopoverBFS`` create these kinds of trees for up to ~100-200 million scramble. The latter notates Loopover states as (R,C,str(lr0)+"x"+str(lc0),str(lr1)+"x"+str(lc1)); for example, the tree in the previous example would be notated as (4,4,"0011x0101","0001x0100"). The former uses an older notation, where sets of numbers are used instead of binary strings to track all locked rows and columns, and only newly locked rows and columns are used to notate the ending state. For example, (4,4,"0011x0101","0001x0100") would be written as (4,4,[0,1],[0,2],[2],[3]).
 
-The classes ``LoopoverBruteForce.Tree`` and ``LoopoverBFS`` creates this BFS tree for up to ~100-200 million permutations. For the latter, Loopover boards are notated differently, as (R,C,rf0,cf0,rf1,cf1), where rf0 and cf0 are lists marking each row and column as either free or locked in the start state, and rf1 mark cf1 mark each row and column as eiher free or locked in the end state.
+The class ``LoopoverBFSLarge`` creates these BFS trees for up to a few billion scramble, writing all scrambles onto several files, separated by each scramble's depth in the BFS tree. However, it cannot store the actual tree (what the parent scramble of each scramble is).
 
-The class ``LoopoverBFSLarge`` creates this BFS tree for up to a few billion permutations by mapping each permutation to a number, converting it into backwards base 95 (to be efficient in memory), and writing it into onw of several files. Each file tells how deep that permutation is in the BFS. However, it cannot store the actual tree (what the parent permutation of each permutation is).
+The class ``LoopoverBFSImprove`` takes two BFS trees that intended to be used consecutively during an actual solve of a Loopover scramble. It then generates all RxC loopover permutations that take at least a certain threshold number of moves to solve, and sees if adding some arbitrary prefix moves before using the same block-building strategy will reduce the total number of moves.
 
-The class ``LoopoverBFSImprove`` takes two BFS trees that intended to be used consecutively during an actual solve of a Loopover scramble. It then generates all RxC loopover permutations that take at least a certain threshold number of moves to solve, and sees if adding some arbitrary moves before using the same block-building strategy will reduce the total number of moves.
-
-If the start state of the first of the two BFS trees has all rows and all columns free, and the end state of the second of the two BFS trees has all rows and all columns locked, then an older version of this class, ``LoopoverBruteForce``, will do what ``LoopoverBFSImprove`` does but also check if a transformed version of the permutation can be solved in fewer moves. The transformation must be such that this new set of moves can be converted into moves that solve the original loopover.
+If the start state of the first of the two BFS trees has all rows and all columns free, and the end state of the second of the two BFS trees has all rows and all columns locked, then an older version of this class, ``LoopoverBruteForce``, will do what ``LoopoverBFSImprove`` does but also check if a transformed version of the scramble can be solved in fewer moves. The transformation must be such that this new set of moves can be converted into moves that solve the original loopover.
 For example, the trees (4,4,[],[],[0,1],[0,1,2]) and (4,4,[0,1],[0,1,2],[2,3],[3]) solve a RxC loopover as follows ("x" denotes regions that are locked, and therefore necessarily solved):
 ```
 ....  
@@ -96,4 +93,4 @@ xxxx
 xxxx
 ```
 
-<sup>1</sup>this program uses transpositions combined with reflections, which allows it to create rotations (transposition+reflection)
+<sup>1</sup>the class ``LoopoverBruteForce`` uses transpositions combined with reflections, which allows it to create rotations (transposition+reflection)
