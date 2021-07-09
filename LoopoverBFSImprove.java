@@ -42,26 +42,27 @@ public class LoopoverBFSImprove {
     private LoopoverBFS tree0, tree1;
     private boolean[] computeAll;
     private int[][] mvs, mvactions, mvreduc;
-    public LoopoverBFSImprove(int R, int C, String[] Rfrees, String[] Cfrees, boolean[] computeAll) {
-        String display=R+"x"+C+"\n"+Arrays.toString(Rfrees)+","+Arrays.toString(Cfrees);
-        if (Rfrees.length!=3||Cfrees.length!=3)
+    public LoopoverBFSImprove(int R, int C, String[] states, boolean[] computeAll) {
+        String display=R+"x"+C+"\n"+Arrays.toString(states);
+        if (states.length!=3)
             throw new RuntimeException("Not supported: "+display);
         System.out.println(display);
         this.R=R; this.C=C;
-        tree0=new LoopoverBFS(R,C,Rfrees[0],Cfrees[0],Rfrees[1],Cfrees[1]);
-        tree1=new LoopoverBFS(R,C,Rfrees[1],Cfrees[1],Rfrees[2],Cfrees[2]);
+        tree0=new LoopoverBFS(R,C,states[0],states[1]);
+        tree1=new LoopoverBFS(R,C,states[1],states[2]);
         this.computeAll=computeAll;
         if (computeAll[0]) for (int D=0; D<tree0.D; D++) tree0.computeActions(D);
         if (computeAll[1]) for (int D=0; D<tree1.D; D++) tree1.computeActions(D);
         //the collection of all trees creates a total list of pieces that the trees collectively solve
         tK=tree0.K+tree1.K;
         M=0;
-        for (int mr=0; mr<R; mr++) if (Rfrees[0].charAt(mr)=='1') M+=2;
-        for (int mc=0; mc<C; mc++) if (Cfrees[0].charAt(mc)=='1') M+=2;
+        for (int c=0; c<states[0].length(); c++)
+            if (states[0].charAt(c)=='1') M+=2;
+        boolean[][] rcfree0=LoopoverBFS.parseState(states[0]);
         mvs=new int[M][]; mvactions=new int[M][]; {
             int idx=0;
             for (int mr=0; mr<R; mr++)
-                if (Rfrees[0].charAt(mr)=='1')
+                if (rcfree0[0][mr])
                     for (int s=-1; s<=1; s+=2) {
                         mvs[idx]=new int[] {0,mr,s};
                         mvactions[idx]=new int[R*C];
@@ -71,7 +72,7 @@ public class LoopoverBFSImprove {
                         idx++;
                     }
             for (int mc=0; mc<C; mc++)
-                if (Cfrees[0].charAt(mc)=='1')
+                if (rcfree0[1][mc])
                     for (int s=-1; s<=1; s+=2) {
                         mvs[idx]=new int[] {1,mc,s};
                         mvactions[idx]=new int[R*C];
@@ -131,7 +132,7 @@ public class LoopoverBFSImprove {
             if (!computeAll[0]) tree0.computeActions(d0);
             if (!computeAll[1]) tree1.computeActions(d1);
             System.out.println("memoizing scramble actions: "+(System.currentTimeMillis()-st)+" ms");
-            long stage=0, mark0=5000, mark=mark0;
+            long stage=0, mark0=10_000, mark=mark0;
             String form="%12s%12s%n";
             System.out.printf(form,"elapsed ms","#combos");
             long reps=0;
@@ -146,10 +147,10 @@ public class LoopoverBFSImprove {
                     //List<List<int[]>> seqs=new ArrayList<>();
                     for (int mvsi=0; mvsi<mvseqactions.size()&&!reduced; mvsi++) {
                         int[] prefixaction=mvseqactions.get(mvsi);
-                    /*seqs.clear();
-                    seqs.add(new ArrayList<>());
-                    for (int mi:mvseqs.get(mvsi))
-                        seqs.get(0).add(mvs[mi]);*/
+                        /*seqs.clear();
+                        seqs.add(new ArrayList<>());
+                        for (int mi:mvseqs.get(mvsi))
+                            seqs.get(0).add(mvs[mi]);*/
                         int[] subarr=new int[tree0.K];
                         for (int i=0; i<tree0.K; i++)
                             subarr[i]=prefixaction[scrm0[scrm1[tree0.pcstosolve[i]]]];
@@ -170,24 +171,18 @@ public class LoopoverBFSImprove {
                         System.out.print(boardStr(solvedscrm,prodperm(prodperm(solvedscrm.clone(),scrm1),scrm0),R,C));
                         LoopoverBFS[] trees={tree0,tree1};
                         int[] codes={bin0[idx0],bin1[idx1]};
-                        for (int t=0; t<2; t++) {
-                            System.out.print("t="+t+";");
-                            List<int[]> tmp=trees[t].solvemvs(codes[t]);
-                            for (int[] mv:tmp) System.out.print(" "+Arrays.toString(mv));
-                            System.out.println();
-                        }
+                        for (int t=0; t<2; t++)
+                            System.out.println("t="+t+";"+LoopoverBFS.mvseqStr(trees[t].solvemvs(codes[t])));
                         return false;
                     }
-                /*if (Math.random()<0.001) {
-                    int[] solvedscrm=new int[tK];
-                    System.arraycopy(tree0.pcstosolve,0,solvedscrm,0,tree0.K);
-                    System.arraycopy(tree1.pcstosolve,0,solvedscrm,tree0.K,tree1.K);
-                    System.out.print(boardStr(solvedscrm,prodperm(prodperm(solvedscrm.clone(),scrm1),scrm0),R,C));
-                    for (List<int[]> tmp:seqs) {
-                        for (int[] mv:tmp) System.out.print(" "+Arrays.toString(mv));
-                        System.out.println();
-                    }
-                }*/
+                    /*if (Math.random()<0.001) {
+                        int[] solvedscrm=new int[tK];
+                        System.arraycopy(tree0.pcstosolve,0,solvedscrm,0,tree0.K);
+                        System.arraycopy(tree1.pcstosolve,0,solvedscrm,tree0.K,tree1.K);
+                        System.out.print(boardStr(solvedscrm,prodperm(prodperm(solvedscrm.clone(),scrm1),scrm0),R,C));
+                        for (List<int[]> tmp:seqs)
+                            System.out.println(LoopoverBFS.mvseqStr(tmp));
+                    }*/
                     reps++;
                     long time=System.currentTimeMillis()-st;
                     if (time>=mark) {
@@ -205,13 +200,12 @@ public class LoopoverBFSImprove {
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        LoopoverBFSImprove improver=new LoopoverBFSImprove(5,5,
-                new String[] {"11111","00111","00011"},new String[] {"11111","00111","00011"},
-                //new String[] {"00011","00001","00000"},new String[] {"00011","00001","00000"},
+        LoopoverBFSImprove improver=new LoopoverBFSImprove(6,6,
+                new String[] {"000011x000011","000011x000001","000001x000001"},
                 new boolean[] {true,true}
         );
-        for (int P=1; P<=20; P++) {
-            if (!improver.improve(20,P))
+        for (int P=4; P<=29; P++) {
+            if (!improver.improve(29,P))
                 System.out.println("--------------------------------\n");
             else break;
         }
