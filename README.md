@@ -4,6 +4,8 @@ This program is intended to take a block-building approach to solving Loopover (
 
 ## Formal explanation
 
+### BFS Tree
+
 A RxC Loopover is a grid of cells with R rows and C columns, where each row and column can be slided, and each cell has a unique number (see https://loopover.gitlab.io/). The objective is to take a loopover with the numbers scrambled and slide them back into the solved order. Here rows will be indexed from 0 to R-1 (top-to-bottom), and columns will be indexed from 0 to C-1 (left-to-right).
 
 A RxC Loopover in the state (lr,lc), where lr and lc are binary strings of lengths R and C respectively, is a RxC loopover but with row r locked if lr[r]==0 and column c locked if lr[c]==0. Thus, every piece (r,c) s.t. lr[r]==0 and lc[c]==0 is locked, i.e. it cannot be moved. For example, a 4x4 Loopover in the state (0011,0101) looks like the following, where each locked piece is marked with an "x":
@@ -15,17 +17,12 @@ x.x.
 ....
 ```
 
-A tree over a RxC Loopover uses BFS to optimally solve every RxC Loopover in a starting state (lr0,lc0) to an ending state (lr1,lc1). For example, a tree over a 4x4 Loopover from (0011,0101) to (0001,0100) looks like the following, where locked pieces are marked with "x" and pieces that will be solved by the tree are marked with "'":
+A tree over a RxC Loopover uses BFS to optimally solve every RxC Loopover in a starting state (lr0,lc0) to an ending state (lr1,lc1). For example, a tree over a 4x4 Loopover from (0011,0101) to (0001,0100) will extend a solved block of the board, as shown below:
 ```
-x.x.  
-x.x.  
-....  
-....  
---> 
-x.x'  
-x.x'  
-'.''  
-....  
+x.x.     x.xx  
+x.x. --> x.xx  
+....     x.xx  
+....     ....  
 ```
 
 Any RxC loopover can be solved by applying one or more trees onto it, progressively solving larger and larger regions of it (this is called block-building), and this gives an upper bound on the "God's number" of RxC Loopover, i.e. the fewest moves necessary to be able to solve every scramble of RxC Loopover.
@@ -34,63 +31,31 @@ The classes ``LoopoverBruteForce.Tree`` and ``LoopoverBFS`` create these kinds o
 
 The class ``LoopoverBFSLarge`` creates these BFS trees for up to a few billion scramble, writing all scrambles onto several files, separated by each scramble's depth in the BFS tree. However, it cannot store the actual tree (what the parent scramble of each scramble is).
 
-The class ``LoopoverBFSImprove`` takes two BFS trees that intended to be used consecutively during an actual solve of a Loopover scramble. It then generates all RxC loopover permutations that take at least a certain threshold number of moves to solve, and sees if adding some arbitrary prefix moves before using the same block-building strategy will reduce the total number of moves.
+### BFS Improvement
 
-If the start state of the first of the two BFS trees has all rows and all columns free, and the end state of the second of the two BFS trees has all rows and all columns locked, then an older version of this class, ``LoopoverBruteForce``, will do what ``LoopoverBFSImprove`` does but also check if a transformed version of the scramble can be solved in fewer moves. The transformation must be such that this new set of moves can be converted into moves that solve the original loopover.
-For example, the trees (4,4,[],[],[0,1],[0,1,2]) and (4,4,[0,1],[0,1,2],[2,3],[3]) solve a RxC loopover as follows ("x" denotes regions that are locked, and therefore necessarily solved):
-```
-....  
-....  
-....  
-....  
-->  
-xxx.  
-xxx.  
-....  
-....  
-->  
-xxxx  
-xxxx  
-xxxx  
-xxxx (entire board solved)
-```
+The class ``LoopoverBFSImprove`` takes two BFS trees that intended to be used consecutively during an actual solve of a Loopover scramble. It then generates all RxC loopover permutations that take at least a certain threshold number of moves to solve if the two trees were applied naively, and sees if solving the pieces in a different 2-phase block-building fashion and/or adding some arbitrary prefix moves will reduce the total number of moves. For example, if there were the trees (5,5,"11111x11111","00111x00111"), (5,5,"00111x00111","00011x00011"), then the class could try solving a given scramble as "11111x11111"-->"10011x00111"-->"00011x00011" or as "11111x11111"-->"01011x01011"-->"00011x00011" instead of only solving it in the default method ("11111x11111"-->"00111x00111"-->"00011x00011").
 
-If we want to reduce the number of moves it takes to solve this RxC loopover subgroup, for each scramble that takes >=D moves to solve with the naive block-building procedure for some number D, we can first add a prefix move to the scramble before doing the block-building.
-
-If the end result of the block-building is the entire Loopover board being solved, another method is to solve transformed versions of the intended regions we want to solve instead of restricting ourselves to start at the top-left corner, such as translations, ex.
 ```
-....  
-....  
-....  
-....  
-->  
-....  
-xxx.  
-xxx.  
-....  
-->  
-xxxx  
-xxxx  
-xxxx  
-xxxx
+"11111x11111"-->"00111x00111"-->"00011x00011"
+.....     xx...     xxx..
+.....     xx...     xxx..
+..... --> ..... --> xxx..
+.....     .....     .....
+.....     .....     .....
+
+"11111x11111"-->"10011x00111"-->"00011x00011"
+.....     .....     xxx..
+.....     xx...     xxx..
+..... --> xx... --> xxx..
+.....     .....     .....
+.....     .....     .....
+
+"11111x11111"-->"01011x01011"-->"00011x00011"
+.....     x.x..     xxx..
+.....     .....     xxx..
+..... --> x.x.. --> xxx..
+.....     .....     .....
+.....     .....     .....
 ```
 
-Other possible transformations include rotations<sup>1</sup> and reflections, ex.
-```
-....  
-....  
-....  
-....  
-->  
-xx..  
-xx..  
-xx..  
-....  
-->  
-xxxx  
-xxxx  
-xxxx  
-xxxx
-```
-
-<sup>1</sup>the class ``LoopoverBruteForce`` uses transpositions combined with reflections, which allows it to create rotations (transposition+reflection)
+An older version of this class, ``LoopoverBruteForce``, was more restrictive on using different 2-phase block-building solving methods, but allowed solving reflected versions of scrambles, in the special case that the first of the two BFS trees has all rows and all columns free, and the end state of the second of the two BFS trees has all rows and all columns locked. However, this extra feature is only for very small Loopover boards, such as [4x4, whose God's number is already solved (the number is 18)](https://www.speedsolving.com/threads/loopover-gods-number-upper-bounds-4%C3%974-asymptotics-etc.75180/#post-1444389), and the class is much slower than ``LoopoverBFSImprove``.
