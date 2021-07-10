@@ -2,6 +2,8 @@
 
 This program is intended to take a block-building approach to solving Loopover (originally created by carykh) and exploit the symmetries of the puzzle to improve the upper bounds on God's number for Loopover.
 
+NRG version: https://github.com/coolcomputery/Loopover-NRG-Upper-Bounds
+
 ## Formal explanation
 
 ### BFS Tree
