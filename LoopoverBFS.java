@@ -20,7 +20,7 @@ public class LoopoverBFS {
     public static String mvseqStr(List<int[]> S) {
         StringBuilder str=new StringBuilder();
         for (int[] m:S)
-            str.append(" ").append(m[0]==0?"R":"C").append(m[1]).append(m[2]==1?"":m[2]==-1?"'":("("+m[2]+")"));
+            str.append(" ").append(m[0]==0?"R":"C").append(m[1]).append(m[2]==1?" ":m[2]==-1?"'":("("+m[2]+")"));
         return str.toString();
     }
     //define absolute indexing as mapping coordinate (r,c) to index r*C+c
@@ -106,6 +106,7 @@ public class LoopoverBFS {
             for (int c=0; c<C; c++)
                 if (free(rcfree,r,c)&&!free(nrcfree,r,c))
                     pcstosolve[idx++]=r*C+c;
+        System.out.println("locations of pieces to solve="+Arrays.toString(pcstosolve));
         for (int r=0; r<R; r++) {
             for (int c=0; c<C; c++)
                 System.out.printf("%4s",
@@ -167,7 +168,6 @@ public class LoopoverBFS {
             int[] solvedscrm=new int[K];
             for (int i=0; i<K; i++)
                 solvedscrm[i]=tofree[pcstosolve[i]];
-            System.out.println(Arrays.toString(solvedscrm));
             int solvedscrmcode=comboCode(solvedscrm);
             fronts.add(new int[] {solvedscrmcode});
             data[solvedscrmcode]=0;
@@ -208,7 +208,7 @@ public class LoopoverBFS {
       --> encode A as J_(N-1)+N*(J_(N-2)+(N-1)*(...+(N-K+2)*J_(N-K)...)
     for this program, N=Nfree, K=K
     */
-    private int comboCode(int[] A) {
+    public int comboCode(int[] A) {
         int[] P=new int[Nfree];
         for (int i=0; i<Nfree; i++) P[i]=i;
         int[] L=P.clone();
@@ -227,6 +227,9 @@ public class LoopoverBFS {
         }
         return out;
     }
+    public int abscomboCode(int[] scrm) {
+        return comboCode(scrm,tofree);
+    }
     private int comboCode(int[] A, int[] f) {
         int[] P=new int[Nfree];
         for (int i=0; i<Nfree; i++) P[i]=i;
@@ -234,6 +237,22 @@ public class LoopoverBFS {
         int out=0;
         for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
             int j=L[f[A[i-(Nfree-K)]]];
+            int pi=P[i];
+            P[j]=pi;
+            L[pi]=j;
+            out+=pow*j;
+            pow*=i+1;
+        }
+        return out;
+    }
+    public int codeAfterScramble(int[] scrm0, int[] scrm1) {
+        //A[i]=tofree[scrm0[scrm1[pcstosolve[i]]]]
+        int[] P=new int[Nfree];
+        for (int i=0; i<Nfree; i++) P[i]=i;
+        int[] L=P.clone();
+        int out=0;
+        for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
+            int j=L[tofree[scrm0[scrm1[pcstosolve[i-(Nfree-K)]]]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
@@ -256,13 +275,13 @@ public class LoopoverBFS {
     }
     //in all below methods, scrm is defined s.t. scrm[i]=location that pc i goes to, in absolute indexing
     public int depth(int[] scrm) {
-        return depth(comboCode(scrm,tofree));
+        return depth(abscomboCode(scrm));
     }
     public int[] solveaction(int[] scrm) {
-        return solveaction(comboCode(scrm,tofree));
+        return solveaction(abscomboCode(scrm));
     }
     public List<int[]> solvemvs(int[] scrm) {
-        return solvemvs(comboCode(scrm,tofree));
+        return solvemvs(abscomboCode(scrm));
     }
     public void computeActions(int D) {
         //compute the solveactions of all combos with depth D and store them in a table
@@ -270,6 +289,10 @@ public class LoopoverBFS {
             solveactions[code]=solveaction_help(code);
             scrambleactions[code]=inv(solveactions[code]);
         }
+    }
+    public void computeAllActions() {
+        for (int d=0; d<D; d++)
+            computeActions(d);
     }
     public void clearActions(int D) { //undo the previous method
         //this is to avoid using too much Java heap space
