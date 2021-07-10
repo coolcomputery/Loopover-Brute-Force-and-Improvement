@@ -38,27 +38,27 @@ public class LoopoverBFSImprove {
         for (int mvi:mvseq) out=prodperm(out,mvactions[mvi]);
         return out;
     }
-    private int R, C, tK, M;
+
+    private int R, C, tK;
+    private String ststate, enstate;
     private LoopoverBFS tree0, tree1;
-    private boolean[] computeAll;
-    private int[][] mvs, mvactions, mvreduc;
-    public LoopoverBFSImprove(int R, int C, String[] states, boolean[] computeAll) {
-        String display=R+"x"+C+"\n"+Arrays.toString(states);
-        if (states.length!=3)
-            throw new RuntimeException("Not supported: "+display);
-        System.out.println(display);
+    public LoopoverBFSImprove(int R, int C, String st0, String st1, String st2) {
+        System.out.println(R+"x"+C+": "+st0+" --> "+st1+" --> "+st2);
         this.R=R; this.C=C;
-        tree0=new LoopoverBFS(R,C,states[0],states[1]);
-        tree1=new LoopoverBFS(R,C,states[1],states[2]);
-        this.computeAll=computeAll;
-        if (computeAll[0]) for (int D=0; D<tree0.D; D++) tree0.computeActions(D);
-        if (computeAll[1]) for (int D=0; D<tree1.D; D++) tree1.computeActions(D);
+        tree0=new LoopoverBFS(R,C,st0,st1);
+        tree1=new LoopoverBFS(R,C,st1,st2);
         //the collection of all trees creates a total list of pieces that the trees collectively solve
         tK=tree0.K+tree1.K;
-        M=0;
-        for (int c=0; c<states[0].length(); c++)
-            if (states[0].charAt(c)=='1') M+=2;
-        boolean[][] rcfree0=LoopoverBFS.parseState(states[0]);
+        ststate=st0;
+        enstate=st2;
+    }
+    private boolean improve(int threshold, String[] midstates, boolean[] computeAllscrms) {
+        //prefix move sequences
+        int M=0;
+        for (int c=0; c<ststate.length(); c++)
+            if (ststate.charAt(c)=='1') M+=2;
+        int[][] mvs, mvactions, mvreduc;
+        boolean[][] rcfree0=LoopoverBFS.parseState(ststate);
         mvs=new int[M][]; mvactions=new int[M][]; {
             int idx=0;
             for (int mr=0; mr<R; mr++)
@@ -83,35 +83,26 @@ public class LoopoverBFSImprove {
                     }
         }
         mvreduc=LoopoverBFS.mvreduc(mvs);
-    }
-    private boolean improve(int threshold, int P) {
-        System.out.println("threshold="+threshold+", P="+P);
-        //BFS over all nonredundant move sequences of length <=P
-        List<int[]> mvseqs=new ArrayList<>(); List<int[]> mvseqactions=new ArrayList<>(); {
-            List<int[]> mvseqfront=new ArrayList<>();
-            mvseqfront.add(new int[] {});
-            Set<String> seen=new HashSet<>();
-            seen.add(Arrays.toString(scrambleAction(R,C,mvseqfront.get(0),mvactions)));
-            for (int D=0; D<P; D++) {
-                List<int[]> nmvseqfront=new ArrayList<>();
-                for (int[] mseq:mvseqfront)
-                    for (int mi:mvreduc[mseq.length==0?M:mseq[D-1]]) {
-                        int[] nmseq=new int[D+1];
-                        System.arraycopy(mseq,0,nmseq,0,D);
-                        nmseq[D]=mi;
-                        int[] action=scrambleAction(R,C,nmseq,mvactions);
-                        String code=Arrays.toString(action);
-                        if (!seen.contains(code)) {
-                            seen.add(code);
-                            nmvseqfront.add(nmseq);
-                            mvseqs.add(nmseq);
-                            mvseqactions.add(action);
-                        }
-                    }
-                mvseqfront=nmvseqfront;
-            }
+        List<int[]> mvseqs=new ArrayList<>(),
+                mvseqactions=new ArrayList<>(),
+                mvseqfront=new ArrayList<>();
+        mvseqfront.add(new int[] {});
+        Set<String> seen=new HashSet<>();
+        seen.add(Arrays.toString(scrambleAction(R,C,mvseqfront.get(0),mvactions)));
+        int prefixDepth=0;
+
+        int A=midstates.length;
+        System.out.println("threshold="+threshold+", midstates="+Arrays.toString(midstates));
+
+        long timest=System.currentTimeMillis();
+        LoopoverBFS[][] trees=new LoopoverBFS[A][2];
+        for (int a=0; a<A; a++) {
+            trees[a][0]=new LoopoverBFS(R,C,ststate,midstates[a]);
+            trees[a][1]=new LoopoverBFS(R,C,midstates[a],enstate);
+            if (computeAllscrms[a])
+                trees[a][0].computeAllActions();
         }
-        System.out.println("#mvseqs="+mvseqs.size());
+        System.out.println("total tree preprocessing time="+(System.currentTimeMillis()-timest));
 
         List<int[]> depthSets=new ArrayList<>(); {
             long totcombos=0;
@@ -121,47 +112,99 @@ public class LoopoverBFSImprove {
                         depthSets.add(new int[] {d0,d1});
                         totcombos+=tree0.codesAtDepth(d0).length*(long)tree1.codesAtDepth(d1).length;
                     }
-            System.out.println("total combos to reduce="+totcombos);
+            System.out.printf("total combos to improve=%,d%n",totcombos);
         }
 
+        timest=System.currentTimeMillis();
+        long ntrials=0, ntries=0, nskips=0, maxtries=0;
         for (int[] depths:depthSets) {
             int d0=depths[0], d1=depths[1];
             int[] bin0=tree0.codesAtDepth(d0), bin1=tree1.codesAtDepth(d1);
+            int[][] scrms0=new int[bin0.length][], scrms1=new int[bin1.length][];
+            for (int idx0=0; idx0<bin0.length; idx0++)
+                scrms0[idx0]=tree0.scrambleaction(bin0[idx0]);
+            for (int idx1=0; idx1<bin1.length; idx1++)
+                scrms1[idx1]=tree1.scrambleaction(bin1[idx1]);
             System.out.println(Arrays.toString(depths)+": ncombos="+bin0.length*(long)bin1.length);
             long st=System.currentTimeMillis();
-            if (!computeAll[0]) tree0.computeActions(d0);
-            if (!computeAll[1]) tree1.computeActions(d1);
             System.out.println("memoizing scramble actions: "+(System.currentTimeMillis()-st)+" ms");
             long stage=0, mark0=10_000, mark=mark0;
-            String form="%12s%12s%n";
+            String form="%12s%20s%n";
             System.out.printf(form,"elapsed ms","#combos");
             long reps=0;
             st=System.currentTimeMillis();
             for (int idx0=0; idx0<bin0.length; idx0++)
                 for (int idx1=0; idx1<bin1.length; idx1++) {
-                    int[] scrm1=tree1.scrambleaction(bin1[idx1]), scrm0=tree0.scrambleaction(bin0[idx0]);
-                    //scrm[i]=scrm0[scrm1[solvedscrm[i]]]
-                    //scrm[i]=the location where the piece solvedscrm[i] goes to
-                    //where solvedscrm:=[tree0.pcstosolve | tree1.pcstosolve]
+                    int[] scrm1=scrms1[idx1], scrm0=scrms0[idx0];
+                    //a piece in location i is moved to location scrm0[scrm1[i]]
                     boolean reduced=false;
                     //List<List<int[]>> seqs=new ArrayList<>();
-                    for (int mvsi=0; mvsi<mvseqactions.size()&&!reduced; mvsi++) {
+                    ntrials++;
+                    for (int a=0; a<A; a++) {
+                        ntries++;
+                        maxtries=Math.max(maxtries,a+1);
+                        //seqs.clear();
+                        int code0=trees[a][0].codeAfterScramble(scrm0,scrm1);
+                        //seqs.add(trees[a][0].solvemvs(code0));
+                        if (trees[a][0].depth(code0)+(trees[a][1].D-1)<=threshold) {
+                            nskips++;
+                            reduced=true;
+                            break;
+                        }
+                        int[] action0=trees[a][0].solveaction(code0);
+                        int[] group1=new int[trees[a][1].K];
+                        for (int i=0; i<group1.length; i++)
+                            group1[i]=action0[scrm0[scrm1[trees[a][1].pcstosolve[i]]]];
+                        //int code1=trees[a][1].codeAfterScramble(action0,scrm0,scrm1);
+                        //^^^ for some reason, using the above line (if a 3-parameter version of LoopoverBFS.codeAfterScramble() existed) is slower than creating the array group1[]
+                        //seqs.add(trees[a][1].solvemvs(code1));
+                        if (trees[a][0].depth(code0)+trees[a][1].depth(group1)<=threshold) {
+                            reduced=true;
+                            break;
+                        }
+                    }
+                    if (!reduced)
+                    for (int mvsi=0;; mvsi++) {
+                        if (mvsi==mvseqactions.size()) {
+                            List<int[]> nmvseqfront=new ArrayList<>();
+                            for (int[] mseq:mvseqfront)
+                                for (int mi:mvreduc[mseq.length==0?M:mseq[prefixDepth-1]]) {
+                                    int[] nmseq=new int[prefixDepth+1];
+                                    System.arraycopy(mseq,0,nmseq,0,prefixDepth);
+                                    nmseq[prefixDepth]=mi;
+                                    int[] action=scrambleAction(R,C,nmseq,mvactions);
+                                    String code=Arrays.toString(action);
+                                    if (!seen.contains(code)) {
+                                        seen.add(code);
+                                        nmvseqfront.add(nmseq);
+                                        mvseqs.add(nmseq);
+                                        mvseqactions.add(action);
+                                    }
+                                }
+                            mvseqfront=nmvseqfront;
+                            prefixDepth++;
+                            System.out.println("prefixDepth-->"+prefixDepth);
+                        }
+                        ntries++;
                         int[] prefixaction=mvseqactions.get(mvsi);
-                        /*seqs.clear();
-                        seqs.add(new ArrayList<>());
-                        for (int mi:mvseqs.get(mvsi))
-                            seqs.get(0).add(mvs[mi]);*/
+//                        seqs.clear();
+//                        seqs.add(new ArrayList<>());
+//                        for (int mi:mvseqs.get(mvsi))
+//                            seqs.get(0).add(mvs[mi]);
                         int[] subarr=new int[tree0.K];
                         for (int i=0; i<tree0.K; i++)
                             subarr[i]=prefixaction[scrm0[scrm1[tree0.pcstosolve[i]]]];
                         //seqs.add(tree0.solvemvs(subarr));
-                        int[] tree0action=tree0.solveaction(subarr);
+                        int code0=tree0.abscomboCode(subarr);
+                        int[] tree0action=tree0.solveaction(code0);
                         int[] subarr2=new int[tree1.K];
                         for (int i=0; i<tree1.K; i++)
                             subarr2[i]=tree0action[prefixaction[scrm0[scrm1[tree1.pcstosolve[i]]]]];
                         //seqs.add(tree1.solvemvs(subarr2));
-                        int ntotdepth=mvseqs.get(mvsi).length+tree0.depth(subarr)+tree1.depth(subarr2);
-                        if (ntotdepth<=threshold) reduced=true;
+                        if (mvseqs.get(mvsi).length+tree0.depth(code0)+tree1.depth(subarr2)<=threshold) {
+                            reduced=true;
+                            break;
+                        }
                     }
                     if (!reduced) {
                         System.out.println("NOT REDUCED:");
@@ -169,13 +212,13 @@ public class LoopoverBFSImprove {
                         System.arraycopy(tree0.pcstosolve,0,solvedscrm,0,tree0.K);
                         System.arraycopy(tree1.pcstosolve,0,solvedscrm,tree0.K,tree1.K);
                         System.out.print(boardStr(solvedscrm,prodperm(prodperm(solvedscrm.clone(),scrm1),scrm0),R,C));
-                        LoopoverBFS[] trees={tree0,tree1};
+                        LoopoverBFS[] tmp={tree0,tree1};
                         int[] codes={bin0[idx0],bin1[idx1]};
                         for (int t=0; t<2; t++)
-                            System.out.println("t="+t+";"+LoopoverBFS.mvseqStr(trees[t].solvemvs(codes[t])));
+                            System.out.println("t="+t+";"+LoopoverBFS.mvseqStr(tmp[t].solvemvs(codes[t])));
                         return false;
                     }
-                    /*if (Math.random()<0.001) {
+                    /*if (Math.random()<1/1000_000.0) {
                         int[] solvedscrm=new int[tK];
                         System.arraycopy(tree0.pcstosolve,0,solvedscrm,0,tree0.K);
                         System.arraycopy(tree1.pcstosolve,0,solvedscrm,tree0.K,tree1.K);
@@ -186,29 +229,41 @@ public class LoopoverBFSImprove {
                     reps++;
                     long time=System.currentTimeMillis()-st;
                     if (time>=mark) {
-                        System.out.printf(form,time,reps);
+                        System.out.printf(form,String.format("%,d",time),String.format("%,d",reps));
                         stage++;
                         mark=(long)(mark0*Math.exp(Math.sqrt(stage)));
                     }
                 }
             System.out.printf(form,System.currentTimeMillis()-st,reps);
-            //free up memory
-            if (!computeAll[0]) tree0.clearActions(d0);
-            if (!computeAll[1]) tree1.clearActions(d1);
         }
+        System.out.println("improvement time="+(System.currentTimeMillis()-timest));
+        System.out.println("mean # alternate block-building sequences/prefix move sequences to try per scramble="+ntries+"/"+ntrials+"="+(ntries/(double)ntrials));
+        System.out.println("maximum # tries on any one scramble="+maxtries);
+        System.out.println("mean # skips per scramble="+nskips+"/"+ntrials+"="+(nskips/(double)ntrials));
+        System.out.println("max prefix sequence length needed="+prefixDepth);
         return true;
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        LoopoverBFSImprove improver=new LoopoverBFSImprove(6,6,
-                new String[] {"000011x000011","000011x000001","000001x000001"},
-                new boolean[] {true,true}
+        String midstate="01011x01011";
+        LoopoverBFSImprove improver=new LoopoverBFSImprove(5,5,
+                "11111x11111",midstate,"00011x00011"
         );
-        for (int P=4; P<=29; P++) {
-            if (!improver.improve(29,P))
-                System.out.println("--------------------------------\n");
-            else break;
-        }
-        System.out.println("time="+(System.currentTimeMillis()-st));
+        List<String> mids=new ArrayList<>();
+        for (int r=0; r<3; r++)
+            for (int c=0; c<3; c++) {
+                StringBuilder s=new StringBuilder("00011x00011");
+                s.setCharAt(r,'1');
+                s.setCharAt(6+c,'1');
+                if (!s.toString().equals(midstate))
+                mids.add(s.toString());
+            }
+        boolean[] tmp=new boolean[mids.size()];
+        Arrays.fill(tmp,true);
+        improver.improve(21,
+                mids.toArray(new String[0]),
+                tmp
+        );
+        System.out.println("total program time="+(System.currentTimeMillis()-st));
     }
 }
