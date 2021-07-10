@@ -177,7 +177,7 @@ public class LoopoverBFS {
         for (D=0;; D++) {
             if (fronts.get(D).length==0) break;
             reached+=fronts.get(D).length;
-            System.out.println(D+":"+fronts.get(D).length);
+            System.out.print((D>0?" ":"")+D+":"+fronts.get(D).length);
             int sz=0;
             for (int f:fronts.get(D)) {
                 int[] scrm=codeCombo(f);
@@ -193,9 +193,9 @@ public class LoopoverBFS {
             fronts.add(new int[sz]);
             System.arraycopy(nfront,0,fronts.get(D+1),0,sz);
         }
-        System.out.println("#reached="+reached);
+        System.out.println("\n#reached="+reached);
         System.out.println("D="+D);
-        System.out.println("total time="+(System.currentTimeMillis()-st));
+        System.out.println("total BFS time="+(System.currentTimeMillis()-st));
     }
     public int[] codesAtDepth(int d) {
         return fronts.get(d);
@@ -253,6 +253,22 @@ public class LoopoverBFS {
         int out=0;
         for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
             int j=L[tofree[scrm0[scrm1[pcstosolve[i-(Nfree-K)]]]]];
+            int pi=P[i];
+            P[j]=pi;
+            L[pi]=j;
+            out+=pow*j;
+            pow*=i+1;
+        }
+        return out;
+    }
+    public int codeAfterScramble(int[] scrm0, int[] scrm1, int[] scrm2) {
+        //A[i]=tofree[scrm0[scrm1[scrm2[pcstosolve[i]]]]]
+        int[] P=new int[Nfree];
+        for (int i=0; i<Nfree; i++) P[i]=i;
+        int[] L=P.clone();
+        int out=0;
+        for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
+            int j=L[tofree[scrm0[scrm1[scrm2[pcstosolve[i-(Nfree-K)]]]]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
