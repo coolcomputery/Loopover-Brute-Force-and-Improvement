@@ -332,6 +332,8 @@ public class LoopoverLowerBounds {
                     for (List<SparseMat[][]> dp:dps)
                         for (BigInteger v:dp.get(D)[k][t].vals.values())
                             tot=tot.add(v);
+                if (k>=2)
+                    System.out.println("# nonzero elems in dp("+D+","+k+","+t+"): "+dpa.get(D)[k][t].vals.size()+" "+dpb.get(D)[k][t].vals.size());
             }
             System.out.println(D+":"+tot);
             if (tot.compareTo(target)>=0) {
