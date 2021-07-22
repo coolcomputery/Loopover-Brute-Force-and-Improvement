@@ -245,6 +245,14 @@ public class LoopoverLowerBounds {
         System.out.println("target="+target);
         BigInteger tot=BigInteger.ONE;
         System.out.println("0:"+tot);
+        class DPValHelp {
+            public BigInteger dpaval(int D, int k, int t, int ai, int bi) {
+                if (k==2) return D==sylcosts[t][bi]+sylcosts[t][ai]?BigInteger.ONE:BigInteger.ZERO;
+                if (k>2) return dpa.get(D)[k][t].get(ai,bi);
+                throw new RuntimeException("k="+k+"<2");
+            }
+        }
+        DPValHelp $=new DPValHelp();
         int D=1;
         while (true) {
             for (List<SparseMat[][]> dp:dps) dp.add(new SparseMat[D+1][2]);
@@ -252,11 +260,10 @@ public class LoopoverLowerBounds {
                 if (k==1)
                     tot=tot.add(new BigInteger(""+(D<binnedSyls.get(t).size()?binnedSyls.get(t).get(D).size():0)));
                 else if (k==2) {
-                    dpa.get(D)[k][t]=new SparseMat(nSyls[1-t],nSyls[t]);
                     for (int bi=0; bi<nSyls[t]; bi++)
                         for (int ai=0; ai<nSyls[1-t]; ai++)
-                            dpa.get(D)[k][t].set(ai,bi,D==sylcosts[t][bi]+sylcosts[1-t][ai]?BigInteger.ONE:BigInteger.ZERO);
-                    dpb.get(D)[k][t]=new SparseMat(1,1);
+                            if (D==sylcosts[t][bi]+sylcosts[1-t][ai])
+                                tot=tot.add(BigInteger.ONE);
                 }
                 else {
                     dpa.get(D)[k][t]=new SparseMat(nSyls[1-t],nSyls[t]);
@@ -270,7 +277,7 @@ public class LoopoverLowerBounds {
                         Arrays.fill(ha[d1],BigInteger.ZERO);
                         for (int ai=0; ai<nSyls[1-t]; ai++)
                             for (int bi=0; bi<nSyls[t]; bi++)
-                                ha[d1][ai]=ha[d1][ai].add(dpa.get(d1)[k-1][1-t].get(bi,ai));
+                                ha[d1][ai]=ha[d1][ai].add($.dpaval(d1,k-1,1-t,bi,ai));//dpa.get(d1)[k-1][1-t].get(bi,ai));
                     }
                     BigInteger[][][] hb=null;
                     //hb(D,A,M):=SUM_{B2 s.t. avoiding(inv(A),B2,A)&M==empty} dpb(D,k-1,1-t,B2,A)
@@ -306,7 +313,7 @@ public class LoopoverLowerBounds {
                         for (int ai=0; ai<nSyls[1-t]; ai++) {
                             BigInteger aval=BigInteger.ZERO;
                             if (D-Bc>=k-1) {
-                                aval=ha[D-Bc][ai].subtract(dpa.get(D-Bc)[k-1][1-t].get(ibi,ai));
+                                aval=ha[D-Bc][ai].subtract($.dpaval(D-Bc,k-1,1-t,ibi,ai));//dpa.get(D-Bc)[k-1][1-t].get(ibi,ai));
                                 if (k>=4) {
                                     aval=aval.add(hb[D-Bc][ai][mi]);
                                     if (avoidPreprocess[t][ai][bi])
@@ -316,7 +323,7 @@ public class LoopoverLowerBounds {
                             //...inv(B) A B
                             BigInteger bval=BigInteger.ZERO;
                             if (D-Bc>=k-1) {
-                                bval=bval.add(dpa.get(D-Bc)[k-1][1-t].get(ibi,ai));
+                                bval=bval.add($.dpaval(D-Bc,k-1,1-t,ibi,ai));//dpa.get(D-Bc)[k-1][1-t].get(ibi,ai));
                                 if (k>=4) {
                                     //...inv(A) inv(B) A B
                                     if (avoidPreprocess[t][ai][bi])
@@ -327,13 +334,11 @@ public class LoopoverLowerBounds {
                             dpb.get(D)[k][t].set(ai,bi,bval);
                         }
                     }
-                }
-                if (k>=2)
                     for (List<SparseMat[][]> dp:dps)
                         for (BigInteger v:dp.get(D)[k][t].vals.values())
                             tot=tot.add(v);
-                if (k>=2)
                     System.out.println("# nonzero elems in dp("+D+","+k+","+t+"): "+dpa.get(D)[k][t].vals.size()+" "+dpb.get(D)[k][t].vals.size());
+                }
             }
             System.out.println(D+":"+tot);
             if (tot.compareTo(target)>=0) {
