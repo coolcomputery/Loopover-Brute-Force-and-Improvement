@@ -30,7 +30,7 @@ public class LoopoverLowerBounds {
         List<List<int[]>> syllables=new ArrayList<>();
         for (int d=0; d<=R*(C/2); d++)
             syllables.add(new ArrayList<>());
-        int[] S=new int[R];
+        int[] S=new int[R]; S[0]=1;
         while (S[R-1]<C) {
             int d=0; for (int r=0; r<R; r++) d+=Math.min(S[r],C-S[r]);
             syllables.get(d).add(Arrays.copyOf(S,R));
@@ -247,9 +247,24 @@ public class LoopoverLowerBounds {
         System.out.println("0:"+tot);
         class DPValHelp {
             public BigInteger dpaval(int D, int k, int t, int ai, int bi) {
-                if (k==2) return D==sylcosts[t][bi]+sylcosts[t][ai]?BigInteger.ONE:BigInteger.ZERO;
-                if (k>2) return dpa.get(D)[k][t].get(ai,bi);
-                throw new RuntimeException("k="+k+"<2");
+                if (k<2) throw new RuntimeException("k="+k+"<2");
+                if (k==2) return D==sylcosts[t][bi]+sylcosts[1-t][ai]?BigInteger.ONE:BigInteger.ZERO;
+                if (k==3) {
+                    int tcost=D-(sylcosts[t][bi]+sylcosts[1-t][ai]);
+                    return 0<=tcost&&tcost<binnedSyls.get(t).size()?
+                            new BigInteger(""+(binnedSyls.get(t).get(tcost).size()-(sylcosts[t][invidxs[t][bi]]==tcost?1:0))):
+                            BigInteger.ZERO;
+                }
+                return dpa.get(D)[k][t].get(ai,bi);
+            }
+            public BigInteger dpbval(int D, int k, int t, int ai, int bi) {
+                if (k<2) throw new RuntimeException("k="+k+"<2");
+                if (k==2) return BigInteger.ZERO;
+                if (k==3) {
+                    int tcost=D-(sylcosts[t][bi]+sylcosts[1-t][ai]);
+                    return sylcosts[t][invidxs[t][bi]]==tcost?BigInteger.ONE:BigInteger.ZERO;
+                }
+                return dpb.get(D)[k][t].get(ai,bi);
             }
         }
         DPValHelp $=new DPValHelp();
@@ -259,11 +274,10 @@ public class LoopoverLowerBounds {
             for (int k=1; k<=D; k++) for (int t=0; t<2; t++) {
                 if (k==1)
                     tot=tot.add(new BigInteger(""+(D<binnedSyls.get(t).size()?binnedSyls.get(t).get(D).size():0)));
-                else if (k==2) {
+                else if (k<=3) {
                     for (int bi=0; bi<nSyls[t]; bi++)
-                        for (int ai=0; ai<nSyls[1-t]; ai++)
-                            if (D==sylcosts[t][bi]+sylcosts[1-t][ai])
-                                tot=tot.add(BigInteger.ONE);
+                    for (int ai=0; ai<nSyls[1-t]; ai++)
+                        tot=tot.add($.dpaval(D,k,t,ai,bi)).add($.dpbval(D,k,t,ai,bi));
                 }
                 else {
                     dpa.get(D)[k][t]=new SparseMat(nSyls[1-t],nSyls[t]);
@@ -293,7 +307,7 @@ public class LoopoverLowerBounds {
                                     int si=avoidmasks[t][ai][bi];
                                     for (int mi=0; mi<(1<<(t==0?R:C)); mi++)
                                         if ((mi&si)==0)
-                                            hb[d1][ai][mi]=hb[d1][ai][mi].add(dpb.get(d1)[k-1][1-t].get(bi,ai));
+                                            hb[d1][ai][mi]=hb[d1][ai][mi].add($.dpbval(d1,k-1,1-t,bi,ai));//dpb.get(d1)[k-1][1-t].get(bi,ai));
                                 }
                                 reps++;
                                 long time=System.currentTimeMillis()-st;
@@ -317,7 +331,7 @@ public class LoopoverLowerBounds {
                                 if (k>=4) {
                                     aval=aval.add(hb[D-Bc][ai][mi]);
                                     if (avoidPreprocess[t][ai][bi])
-                                        aval=aval.subtract(dpb.get(D-Bc)[k-1][1-t].get(ibi,ai));
+                                        aval=aval.subtract($.dpbval(D-Bc,k-1,1-t,ibi,ai));//dpb.get(D-Bc)[k-1][1-t].get(ibi,ai));
                                 }
                             }
                             //...inv(B) A B
@@ -327,7 +341,7 @@ public class LoopoverLowerBounds {
                                 if (k>=4) {
                                     //...inv(A) inv(B) A B
                                     if (avoidPreprocess[t][ai][bi])
-                                        bval=bval.add(dpb.get(D-Bc)[k-1][1-t].get(ibi,ai));
+                                        bval=bval.add($.dpbval(D-Bc,k-1,1-t,ibi,ai));//dpb.get(D-Bc)[k-1][1-t].get(ibi,ai));
                                 }
                             }
                             dpa.get(D)[k][t].set(ai,bi,aval);
