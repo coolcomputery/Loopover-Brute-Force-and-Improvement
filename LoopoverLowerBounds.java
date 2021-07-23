@@ -171,6 +171,18 @@ public class LoopoverLowerBounds {
                 System.out.print(" "+d+":"+sylcnt[t][d]);
             System.out.println();
         }
+        int[][][] binnedSyls=new int[2][][];
+        for (int t=0; t<2; t++) {
+            int D=sylcnt[t].length;
+            binnedSyls[t]=new int[D][];
+            for (int d=0; d<D; d++)
+                binnedSyls[t][d]=new int[sylcnt[t][d]];
+            int[] idxs=new int[D];
+            for (int si=0; si<nSyls[t]; si++) {
+                int d=sylcost[t][si];
+                binnedSyls[t][d][idxs[d]++]=si;
+            }
+        }
         //System.out.println(Arrays.toString(avoiding(5,5,new int[] {1,0,0,0,0},new int[] {1,0,0,0,0},new int[] {-1,0,0,0,0},0)));
         boolean[][][] avoidPreprocess=new boolean[2][][];
         int[][][] avoidmasks=new int[2][][];
@@ -217,7 +229,7 @@ public class LoopoverLowerBounds {
                 else throw idxerr(r,c);
             }
         }
-        int DMAX=16;
+        int DMAX=6;
         System.out.println("DMAX="+DMAX);
         SparseMat[][][] dpb=new SparseMat[DMAX+1][][];
         BigInteger[][][][] ha=new BigInteger[DMAX+1][2][][];
@@ -318,34 +330,31 @@ public class LoopoverLowerBounds {
                     }
                 }
                 dpb[k][t]=new SparseMat[DMAX+1];
-                for (int d=k; d<=DMAX; d++) {
-                    System.out.printf("(k,t,d)=(%d,%d,%d)",k,t,d);
-                    long st=System.currentTimeMillis();
+                for (int d=k; d<=DMAX; d++)
                     dpb[k][t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
-                    for (int bi=0; bi<nSyls[t]; bi++) {
-                        int nd=d-sylcost[t][bi], ibi=invidx[t][bi];
-                        if (nd>=k-1)
-                            for (int ai=0; ai<nSyls[1-t]; ai++) {
-                                BigInteger vb=$.dpaval(k-1,1-t,nd,ibi,ai);
-                                if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(k-1,1-t,nd,ibi,ai));
-                                dpb[k][t][d].set(ai,bi,vb);
-                                tots[k][t][d]=tots[k][t][d].add(vb).add($.dpaval(k,t,d,ai,bi));
-                            }
+                for (int nd=k-1; nd<DMAX; nd++) {
+                    System.out.println("nd="+nd);
+                    for (int d=nd+1; d<=DMAX; d++)
+                    for (int bi:binnedSyls[t][d-nd]) {
+                        int ibi=invidx[t][bi];
+                        for (int ai=0; ai<nSyls[1-t]; ai++) {
+                            BigInteger vb=$.dpaval(k-1,1-t,nd,ibi,ai);
+                            if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(k-1,1-t,nd,ibi,ai));
+                            dpb[k][t][d].set(ai,bi,vb);
+                            tots[k][t][d]=tots[k][t][d].add(vb).add($.dpaval(k,t,d,ai,bi));
+                        }
                     }
-                    System.out.println("; # nonzero elems in dpb="+dpb[k][t][d].vals.size()
-                            +"; time="+(System.currentTimeMillis()-st));
-                }
-                {
-                    //delete unused dp arrays
                     long mem=0;
                     for (int d=k; d<=DMAX; d++) {
                         mem+=dpb[k][t][d].vals.size();
-                        if (k>=5)
+                        if (k>=5&&dpb[k-1][1-t][d]!=null)
                             mem+=dpb[k-1][1-t][d].vals.size();
                     }
                     System.out.println("tot # of map keys in use="+mem);
-                    dpb[k-1][1-t]=null;
+                    if (k>=5)
+                        dpb[k-1][1-t][nd]=null;
                 }
+                dpb[k-1][1-t]=null;
             }
         }
         BigInteger tot=BigInteger.ONE;
