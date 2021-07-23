@@ -217,10 +217,12 @@ public class LoopoverLowerBounds {
                 else throw idxerr(r,c);
             }
         }
-        int DMAX=15;
+        int DMAX=16;
         System.out.println("DMAX="+DMAX);
-        SparseMat[][][] dpa=new SparseMat[DMAX+1][][],
-                dpb=new SparseMat[DMAX+1][][];
+        SparseMat[][][] dpb=new SparseMat[DMAX+1][][];
+        BigInteger[][][][] ha=new BigInteger[DMAX+1][2][][];
+        BigInteger[][][][][] hb=new BigInteger[DMAX+1][2][][][];
+
         BigInteger target=BigInteger.ONE;
         for (int n=2; n<=R*C; n++) target=target.multiply(new BigInteger(""+n));
         target=target.divide(new BigInteger("2"));
@@ -235,7 +237,9 @@ public class LoopoverLowerBounds {
                             new BigInteger(""+(sylcnt[t][tcost]-(sylcost[t][invidx[t][bi]]==tcost?1:0))):
                             BigInteger.ZERO;
                 }
-                return dpa[k][t][d].get(ai,bi);
+                int nd=d-sylcost[t][bi];
+                return nd<k-1?BigInteger.ZERO:
+                        ha[k][t][nd][ai].add(hb[k][t][nd][ai][movemask[t][bi]]).subtract(dpb[k][t][d].get(ai,bi));
             }
             public BigInteger dpbval(int k, int t, int d, int ai, int bi) {
                 if (k<2) throw new RuntimeException("k="+k+"<2");
@@ -253,7 +257,6 @@ public class LoopoverLowerBounds {
         for (int k=1; k<=DMAX; k++) {
             tots[k]=new BigInteger[2][DMAX+1];
             for (int t=0; t<2; t++) Arrays.fill(tots[k][t],BigInteger.ZERO);
-            dpa[k]=new SparseMat[2][];
             dpb[k]=new SparseMat[2][];
         }
         for (int tstart=0; tstart<2; tstart++) for (int k=1; k<=DMAX; k++) {
@@ -297,24 +300,24 @@ public class LoopoverLowerBounds {
 
                 Then dpa(k,t,d,A,B) simplifies to:
                     ha(d-|B|,A)-dpa(k-1,1-t,d-|B|,inv(B),A) + hb(d-|B|,A,M(B))-(dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
+                    == ha(d-|B|,A)+hb(d-|B|,A,M(B))-dpb(k,t,d,A,B)
                  */
-                dpa[k][t]=new SparseMat[DMAX+1];
-                dpb[k][t]=new SparseMat[DMAX+1];
-                BigInteger[][] ha=new BigInteger[DMAX+1][nSyls[1-t]];
-                BigInteger[][][] hb=new BigInteger[DMAX+1][nSyls[1-t]][1<<(t==0?R:C)];
+                ha[k][t]=new BigInteger[DMAX+1][nSyls[1-t]];
+                hb[k][t]=new BigInteger[DMAX+1][nSyls[1-t]][1<<(t==0?R:C)];
                 for (int d=k-1; d<=DMAX; d++) for (int ai=0; ai<nSyls[1-t]; ai++) {
                     BigInteger va=BigInteger.ZERO;
                     for (int ci=0; ci<nSyls[t]; ci++)
                         va=va.add($.dpaval(k-1,1-t,d,ci,ai));
-                    ha[d][ai]=va;
+                    ha[k][t][d][ai]=va;
                     for (int mask=0; mask<(1<<(t==0?R:C)); mask++) {
                         BigInteger vb=BigInteger.ZERO;
                         for (int ci=0; ci<nSyls[t]; ci++)
                             if ((avoidmasks[t][ai][ci]&mask)==0)
                                 vb=vb.add($.dpbval(k-1,1-t,d,ci,ai));
-                        hb[d][ai][mask]=vb;
+                        hb[k][t][d][ai][mask]=vb;
                     }
                 }
+                dpb[k][t]=new SparseMat[DMAX+1];
                 for (int d=k; d<=DMAX; d++) {
                     System.out.printf("(k,t,d)=(%d,%d,%d)",k,t,d);
                     long st=System.currentTimeMillis();
@@ -326,6 +329,7 @@ public class LoopoverLowerBounds {
                                 BigInteger vb=$.dpaval(k-1,1-t,nd,ibi,ai);
                                 if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(k-1,1-t,nd,ibi,ai));
                                 dpb[k][t][d].set(ai,bi,vb);
+                                tots[k][t][d]=tots[k][t][d].add(vb).add($.dpaval(k,t,d,ai,bi));
                             }
                     }
                     System.out.println("; # nonzero elems in dpb="+dpb[k][t][d].vals.size()
@@ -337,37 +341,11 @@ public class LoopoverLowerBounds {
                     for (int d=k; d<=DMAX; d++) {
                         mem+=dpb[k][t][d].vals.size();
                         if (k>=5)
-                            mem+=dpa[k-1][1-t][d].vals.size()+dpb[k-1][1-t][d].vals.size();
+                            mem+=dpb[k-1][1-t][d].vals.size();
                     }
                     System.out.println("tot # of map keys in use="+mem);
-                    dpa[k-1][1-t]=null;
                     dpb[k-1][1-t]=null;
                 }
-                for (int d=k; d<=DMAX; d++) {
-                    System.out.printf("(k,t,d)=(%d,%d,%d)",k,t,d);
-                    long st=System.currentTimeMillis();
-                    dpa[k][t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
-                    BigInteger ret=BigInteger.ZERO;
-                    for (int bi=0; bi<nSyls[t]; bi++) {
-                        int nd=d-sylcost[t][bi];
-                        if (nd>=k-1)
-                            for (int ai=0; ai<nSyls[1-t]; ai++) {
-                                BigInteger va=ha[nd][ai].add(hb[nd][ai][movemask[t][bi]]);
-                                ret=ret.add(va);
-                                va=va.subtract(dpb[k][t][d].get(ai,bi));
-                                dpa[k][t][d].set(ai,bi,va);
-                            }
-                    }
-                    tots[k][t][d]=ret;
-                    System.out.println("; # nonzero elems in dpa="+dpa[k][t][d].vals.size()
-                            +"; time="+(System.currentTimeMillis()-st));
-                }
-
-                //delete unused dp arrays
-                long mem=0;
-                for (int d=k; d<=DMAX; d++)
-                    mem+=dpa[k][t][d].vals.size()+dpb[k][t][d].vals.size();
-                System.out.println("tot # of map keys in use="+mem);
             }
         }
         BigInteger tot=BigInteger.ONE;
