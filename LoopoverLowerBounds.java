@@ -217,7 +217,7 @@ public class LoopoverLowerBounds {
                 else throw idxerr(r,c);
             }
         }
-        int DMAX=13;
+        int DMAX=15;
         System.out.println("DMAX="+DMAX);
         SparseMat[][][] dpa=new SparseMat[DMAX+1][][],
                 dpb=new SparseMat[DMAX+1][][];
@@ -252,113 +252,130 @@ public class LoopoverLowerBounds {
         //tots(k,t,d)=total # good syllable sequences of k syllables, total move count d, last syllable of type t
         for (int k=1; k<=DMAX; k++) {
             tots[k]=new BigInteger[2][DMAX+1];
+            for (int t=0; t<2; t++) Arrays.fill(tots[k][t],BigInteger.ZERO);
             dpa[k]=new SparseMat[2][];
             dpb[k]=new SparseMat[2][];
         }
-        for (int tstart=0; tstart<2; tstart++)
-        for (int k=1; k<=DMAX; k++) {
-            /*
-            dpa(k,t,d,A,B)=# d-move k-syllable sequences ending in ....C,A,B for any C!=inv(B), where C,B are type t and A is type (1-t)
-            dpb(k,t,d,A,B)=# d-move k-syllable sequences ending in ....inv(B),A,B where B is type t and A is type (1-t)
-            both expressions require that for all sets of consecutive syllables of the form inv(A) B A C, S(inv(A),B,A)&N(C)=empty
-
-            Then:
-            dpa(k,t,d,A,B)=(SUM_{C!=inv(B)} dpa(k-1,1-t,d-|B|,C,A)) + (SUM_{C!=inv(B) and S(inv(A),C,A)&M(B)==empty} dpb(k-1,1-t,d-|B|,C,A))
-            dpb(k,t,d,A,B)=dpa(k-1,1-t,d-|B|,inv(B),A) + (dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
-
-            k=3 is a base case. k=0,1,2 are dealt with separately
-
-            if k>d, then dpa(k,t,d,A,B)=dpb(k,t,d,A,B)=0
-
-            To reduce running time, for each fixed (k,t), we define some helper variables:
-
-            ha(d,A)=SUM_{C type t} dpa(k-1,1-t,d,C,A)
-            hb(d,A,M)=SUM_{C type t and S(inv(A),C,A)&M==empty} dpb(k-1,1-t,d,C,A)
-
-            Then dpa(k,t,d,A,B) simplifies to:
-                ha(d-|B|,A)-dpa(k-1,1-t,d-|B|,inv(B),A) + hb(d-|B|,A,M(B))-(dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
-             */
+        for (int tstart=0; tstart<2; tstart++) for (int k=1; k<=DMAX; k++) {
             int t=(tstart+k-1)%2;
             System.out.printf("(k,t)=(%d,%d)%n",k,t);
-            dpa[k][t]=new SparseMat[DMAX+1];
-            dpb[k][t]=new SparseMat[DMAX+1];
-            BigInteger[][] ha=new BigInteger[DMAX+1][nSyls[1-t]];
-            BigInteger[][][] hb=new BigInteger[DMAX+1][nSyls[1-t]][1<<(t==0?R:C)];
-            if (k>=4)
-            for (int d=k-1; d<=DMAX; d++) for (int ai=0; ai<nSyls[1-t]; ai++) {
-                BigInteger va=BigInteger.ZERO;
-                for (int ci=0; ci<nSyls[t]; ci++)
-                    va=va.add($.dpaval(k-1,1-t,d,ci,ai));
-                ha[d][ai]=va;
-                for (int mask=0; mask<(1<<(t==0?R:C)); mask++) {
-                    BigInteger vb=BigInteger.ZERO;
-                    for (int ci=0; ci<nSyls[t]; ci++)
-                        if ((avoidmasks[t][ai][ci]&mask)==0)
-                            vb=vb.add($.dpbval(k-1,1-t,d,ci,ai));
-                    hb[d][ai][mask]=vb;
-                }
-            }
-            for (int d=k; d<=DMAX; d++) {
-                if (k==1)
+            if (k==1)
+                for (int d=k; d<=DMAX; d++)
                     tots[k][t][d]=d<sylcnt[t].length?new BigInteger(""+sylcnt[t][d]):BigInteger.ZERO;
-                else if (k==2) {
+            else if (k==2)
+                for (int d=k; d<=DMAX; d++) {
                     long ret=0;
                     for (int d0=1; d0<d&&d0<sylcnt[t].length&&d-d0<sylcnt[1-t].length; d0++)
                         ret+=sylcnt[t][d0]*sylcnt[1-t][d-d0];
                     tots[k][t][d]=new BigInteger(""+ret);
                 }
-                else if (k==3) {
+            else if (k==3)
+                for (int d=k; d<=DMAX; d++) {
                     BigInteger ret=BigInteger.ZERO;
                     for (int bi=0; bi<nSyls[t]; bi++) for (int ai=0; ai<nSyls[1-t]; ai++)
                         ret=ret.add($.dpaval(3,t,d,ai,bi)).add($.dpbval(3,t,d,ai,bi));
                     tots[k][t][d]=ret;
                 }
-                else {
+            else {
+                /*
+                dpa(k,t,d,A,B)=# d-move k-syllable sequences ending in ....C,A,B for any C!=inv(B), where C,B are type t and A is type (1-t)
+                dpb(k,t,d,A,B)=# d-move k-syllable sequences ending in ....inv(B),A,B where B is type t and A is type (1-t)
+                both expressions require that for all sets of consecutive syllables of the form inv(A) B A C, S(inv(A),B,A)&N(C)=empty
+
+                Then:
+                dpa(k,t,d,A,B)=(SUM_{C!=inv(B)} dpa(k-1,1-t,d-|B|,C,A)) + (SUM_{C!=inv(B) and S(inv(A),C,A)&M(B)==empty} dpb(k-1,1-t,d-|B|,C,A))
+                dpb(k,t,d,A,B)=dpa(k-1,1-t,d-|B|,inv(B),A) + (dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
+
+                k=3 is a base case. k=0,1,2 are dealt with separately
+
+                if k>d, then dpa(k,t,d,A,B)=dpb(k,t,d,A,B)=0
+
+                To reduce running time, for each fixed (k,t), we define some helper variables:
+
+                ha(d,A)=SUM_{C type t} dpa(k-1,1-t,d,C,A)
+                hb(d,A,M)=SUM_{C type t and S(inv(A),C,A)&M==empty} dpb(k-1,1-t,d,C,A)
+
+                Then dpa(k,t,d,A,B) simplifies to:
+                    ha(d-|B|,A)-dpa(k-1,1-t,d-|B|,inv(B),A) + hb(d-|B|,A,M(B))-(dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
+                 */
+                dpa[k][t]=new SparseMat[DMAX+1];
+                dpb[k][t]=new SparseMat[DMAX+1];
+                BigInteger[][] ha=new BigInteger[DMAX+1][nSyls[1-t]];
+                BigInteger[][][] hb=new BigInteger[DMAX+1][nSyls[1-t]][1<<(t==0?R:C)];
+                for (int d=k-1; d<=DMAX; d++) for (int ai=0; ai<nSyls[1-t]; ai++) {
+                    BigInteger va=BigInteger.ZERO;
+                    for (int ci=0; ci<nSyls[t]; ci++)
+                        va=va.add($.dpaval(k-1,1-t,d,ci,ai));
+                    ha[d][ai]=va;
+                    for (int mask=0; mask<(1<<(t==0?R:C)); mask++) {
+                        BigInteger vb=BigInteger.ZERO;
+                        for (int ci=0; ci<nSyls[t]; ci++)
+                            if ((avoidmasks[t][ai][ci]&mask)==0)
+                                vb=vb.add($.dpbval(k-1,1-t,d,ci,ai));
+                        hb[d][ai][mask]=vb;
+                    }
+                }
+                for (int d=k; d<=DMAX; d++) {
                     System.out.printf("(k,t,d)=(%d,%d,%d)",k,t,d);
                     long st=System.currentTimeMillis();
-                    dpa[k][t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
                     dpb[k][t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
-                    BigInteger ret=BigInteger.ZERO;
                     for (int bi=0; bi<nSyls[t]; bi++) {
                         int nd=d-sylcost[t][bi], ibi=invidx[t][bi];
                         if (nd>=k-1)
                             for (int ai=0; ai<nSyls[1-t]; ai++) {
-                                BigInteger va=ha[nd][ai].subtract($.dpaval(k-1,1-t,nd,ibi,ai))
-                                        .add(hb[nd][ai][movemask[t][bi]]);
-                                if (avoidPreprocess[t][ai][bi]) va=va.subtract($.dpbval(k-1,1-t,nd,ibi,ai));
-                                dpa[k][t][d].set(ai,bi,va);
                                 BigInteger vb=$.dpaval(k-1,1-t,nd,ibi,ai);
                                 if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(k-1,1-t,nd,ibi,ai));
                                 dpb[k][t][d].set(ai,bi,vb);
-                                ret=ret.add(va).add(vb);
+                            }
+                    }
+                    System.out.println("; # nonzero elems in dpb="+dpb[k][t][d].vals.size()
+                            +"; time="+(System.currentTimeMillis()-st));
+                }
+                {
+                    //delete unused dp arrays
+                    long mem=0;
+                    for (int d=k; d<=DMAX; d++) {
+                        mem+=dpb[k][t][d].vals.size();
+                        if (k>=5)
+                            mem+=dpa[k-1][1-t][d].vals.size()+dpb[k-1][1-t][d].vals.size();
+                    }
+                    System.out.println("tot # of map keys in use="+mem);
+                    dpa[k-1][1-t]=null;
+                    dpb[k-1][1-t]=null;
+                }
+                for (int d=k; d<=DMAX; d++) {
+                    System.out.printf("(k,t,d)=(%d,%d,%d)",k,t,d);
+                    long st=System.currentTimeMillis();
+                    dpa[k][t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
+                    BigInteger ret=BigInteger.ZERO;
+                    for (int bi=0; bi<nSyls[t]; bi++) {
+                        int nd=d-sylcost[t][bi];
+                        if (nd>=k-1)
+                            for (int ai=0; ai<nSyls[1-t]; ai++) {
+                                BigInteger va=ha[nd][ai].add(hb[nd][ai][movemask[t][bi]]);
+                                ret=ret.add(va);
+                                va=va.subtract(dpb[k][t][d].get(ai,bi));
+                                dpa[k][t][d].set(ai,bi,va);
                             }
                     }
                     tots[k][t][d]=ret;
-                    System.out.println("; # nonzero elems="+dpa[k][t][d].vals.size()+" "+dpb[k][t][d].vals.size()
-                                            +"; time="+(System.currentTimeMillis()-st));
+                    System.out.println("; # nonzero elems in dpa="+dpa[k][t][d].vals.size()
+                            +"; time="+(System.currentTimeMillis()-st));
                 }
-            }
-            //delete unused dp arrays
-            if (k>=4) {
+
+                //delete unused dp arrays
                 long mem=0;
-                for (int d=k; d<=DMAX; d++) {
+                for (int d=k; d<=DMAX; d++)
                     mem+=dpa[k][t][d].vals.size()+dpb[k][t][d].vals.size();
-                    if (k>=5)
-                        mem+=dpa[k-1][1-t][d].vals.size()+dpb[k-1][1-t][d].vals.size();
-                }
-                System.out.println("tot # of map keys="+mem);
-            }
-            if (k>=4) {
-                dpa[k-1][1-t]=null;
-                dpb[k-1][1-t]=null;
+                System.out.println("tot # of map keys in use="+mem);
             }
         }
         BigInteger tot=BigInteger.ONE;
         System.out.println("0:"+tot);
         for (int d=1; d<=DMAX; d++) {
             for (int t=0; t<2; t++)
-            for (int k=1; k<=d; k++)
-                tot=tot.add(tots[k][t][d]);
+                for (int k=1; k<=d; k++)
+                    tot=tot.add(tots[k][t][d]);
             System.out.println(d+":"+tot);
         }
         System.out.println("DP time="+(System.currentTimeMillis()-timest));
