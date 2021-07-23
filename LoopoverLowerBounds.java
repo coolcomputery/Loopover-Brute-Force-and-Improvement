@@ -25,15 +25,12 @@ public class LoopoverLowerBounds {
             out[i]=B[A[i]];
         return out;
     }
-    private static List<List<int[]>> binnedSyllables(int R, int C) {
+    private static List<int[]> binnedSyllables(int R, int C) {
         //time complexity: O(R^C)
-        List<List<int[]>> syllables=new ArrayList<>();
-        for (int d=0; d<=R*(C/2); d++)
-            syllables.add(new ArrayList<>());
+        List<int[]> syllables=new ArrayList<>();
         int[] S=new int[R]; S[0]=1;
         while (S[R-1]<C) {
-            int d=0; for (int r=0; r<R; r++) d+=Math.min(S[r],C-S[r]);
-            syllables.get(d).add(Arrays.copyOf(S,R));
+            syllables.add(Arrays.copyOf(S,R));
             S[0]++;
             for (int i=0; i<R-1&&S[i]==C; i++) {
                 S[i]=0;
@@ -56,27 +53,13 @@ public class LoopoverLowerBounds {
                         == H0' V0 H1 V1 H2',
     where H0'=H0 (PROD_{r in S}(>>r)^H2[k])
 
-    Let N(A)={x|A[x]!=0} (works with horizontal/vertical syllables)
-    The above requirement can be written as: S(V0,H0,V1)&N(H1)==empty
+    Let M(A)={x|A[x]!=0} (works with horizontal/vertical syllables)
+    The above requirement can be written as: S(V0,H0,V1)&M(H1)==empty
+    everything written above also applies for V0 H0 V1 H1 V2 (i.e. if the types of all syllables are reversed)
 
     Because doing this for all possible syllable triplets V0 H1 V1 is impractical for 5x5 Loopover ((5^5)^3=~30 billion states),
-        we only use this new reduction technique for syllable triplets V H inv(V)
-
-
-    dpa(d,k,A,B)=# d-move k-syllable sequences ending in ....C,A,B for any C!=inv(B)
-    dpb(d,k,A,B)=# d-move k-syllable sequences ending in ....inv(B),A,B
-    both expressions require that for all sets of consecutive syllables of the form inv(A) B A C, S(inv(A),B,A)&N(C)=empty
-
-    Then:
-    dpa(d,k,A,B)=(SUM_{C!=inv(B)} dpa(d-|B|,k-1,C,A)) + (SUM_{C!=inv(B),S(inv(A),C,A)&N(B)==empty} dpb(d-|B|,k-1,C,A))
-    dpb(d,k,A,B)=dpa(d-|B|,k-1,inv(B),A) + (dpb(d-|B|,k-1,inv(B),A) if S(inv(A),inv(B),A)&N(B)==empty else 0)
-
-    To optimize on memory, it is best to further split dpa and dpb each into two functions, based on the type of the final syllable B
-
-    the cases k=0,1 are dealt with separately
-
-    everything written above also applies for V0 H0 V1 H1 V2 (i.e. if the types of all syllables are reversed)
-     */
+        we only use this new reduction technique for syllable triplets inv(V) H V
+    */
     private static int avoiding(int R, int C, int[] X, int[] Y, int[] Z, int type) {
         //if type==0: find all r s.t. (>>r)XYZ == XYZ(>>r)
         //if type==1: find all c s.t. (,,c)XYZ == XYZ(,,c)
@@ -103,7 +86,7 @@ public class LoopoverLowerBounds {
                     if (act_shift%C==c) act_shift=mod(act_shift/C+1,R)*C+act_shift%C;
                     int shift_act=act[mod(r+1,C)*R+c];
                     if (act_shift!=shift_act)
-                       avoid=false;
+                        avoid=false;
                 }
                 if (avoid) out|=1<<c;
             }
@@ -161,39 +144,38 @@ public class LoopoverLowerBounds {
         long timest=System.currentTimeMillis();
         int R=5, C=5;
         //syllables(t,d)=List<int[]> of all syllables of type t
-        List<List<List<int[]>>> binnedSyls=new ArrayList<>(Arrays.asList(
+        List<List<int[]>> syls=new ArrayList<>(Arrays.asList(
                 binnedSyllables(R,C),binnedSyllables(C,R)
         ));
-        for (int t=0; t<2; t++) {
-            for (int d=0; d<binnedSyls.get(t).size(); d++)
-                System.out.print(" "+d+":"+binnedSyls.get(t).get(d).size());
-            System.out.println();
-        }
-        List<List<int[]>> syls=new ArrayList<>();
-        for (int t=0; t<2; t++) {
-            syls.add(new ArrayList<>());
-            for (int d=1; d<binnedSyls.get(t).size(); d++)
-                //exclude the trivial syllable (which has cost 0)
-                syls.get(t).addAll(binnedSyls.get(t).get(d));
-            System.out.println("t="+t+": "+syls.get(t).size()+" nontrivial syllables");
-        }
         int[] nSyls=new int[2];
         for (int t=0; t<2; t++) nSyls[t]=syls.get(t).size();
         System.out.println("nSyls="+Arrays.toString(nSyls));
+        int[][] invidx=new int[2][], movemask=new int[2][], sylcost=new int[2][];
+        for (int t=0; t<2; t++) {
+            invidx[t]=new int[nSyls[t]];
+            movemask[t]=new int[nSyls[t]];
+            sylcost[t]=new int[nSyls[t]];
+            for (int[] B:syls.get(t)) {
+                int bi=idx(R,C,B,t);
+                invidx[t][bi]=idx(R,C,inv(R,C,B,t),t);
+                movemask[t][bi]=moving(R,C,B,t);
+                sylcost[t][bi]=cost(R,C,B,t);
+            }
+        }
+        int[][] sylcnt=new int[2][];
+        for (int t=0; t<2; t++) {
+            sylcnt[t]=new int[1+(t==0?(R*(C/2)):(C*(R/2)))];
+            for (int si=0; si<nSyls[t]; si++)
+                sylcnt[t][sylcost[t][si]]++;
+            for (int d=0; d<sylcnt[t].length; d++)
+                System.out.print(" "+d+":"+sylcnt[t][d]);
+            System.out.println();
+        }
         //System.out.println(Arrays.toString(avoiding(5,5,new int[] {1,0,0,0,0},new int[] {1,0,0,0,0},new int[] {-1,0,0,0,0},0)));
         boolean[][][] avoidPreprocess=new boolean[2][][];
         int[][][] avoidmasks=new int[2][][];
-        int[][] invidxs=new int[2][], movemasks=new int[2][], sylcosts=new int[2][];
+        //avoidPreprocess(A,B)=S(inv(A),inv(B),A)&M(B)==empty
         for (int t=0; t<2; t++) {
-            invidxs[t]=new int[nSyls[t]];
-            movemasks[t]=new int[nSyls[t]];
-            sylcosts[t]=new int[nSyls[t]];
-            for (int[] B:syls.get(t)) {
-                int bi=idx(R,C,B,t);
-                invidxs[t][bi]=idx(R,C,inv(R,C,B,t),t);
-                movemasks[t][bi]=moving(R,C,B,t);
-                sylcosts[t][bi]=cost(R,C,B,t);
-            }
             avoidPreprocess[t]=new boolean[nSyls[1-t]][nSyls[t]];
             avoidmasks[t]=new int[nSyls[1-t]][nSyls[t]];
             for (int[] A:syls.get(1-t)) {
@@ -201,9 +183,10 @@ public class LoopoverLowerBounds {
                 int[] iA=inv(R,C,A,1-t);
                 for (int[] B:syls.get(t)) {
                     int bi=idx(R,C,B,t);
-                    avoidPreprocess[t][ai][bi]=
-                            (avoiding(R,C,iA,inv(R,C,B,t),A,t)&moving(R,C,B,t))==0;
                     avoidmasks[t][ai][bi]=avoiding(R,C,iA,B,A,t);
+                    int ibi=invidx[t][bi];
+                    avoidPreprocess[t][ai][ibi]=
+                            (avoidmasks[t][ai][bi]&movemask[t][ibi])==0;
                 }
             }
         }
@@ -236,7 +219,6 @@ public class LoopoverLowerBounds {
         }
         List<SparseMat[][]> dpa=new ArrayList<>(),
                 dpb=new ArrayList<>();
-        List<List<SparseMat[][]>> dps=new ArrayList<>(Arrays.asList(dpa,dpb));
         dpa.add(null);
         dpb.add(null);
         BigInteger target=BigInteger.ONE;
@@ -246,120 +228,119 @@ public class LoopoverLowerBounds {
         BigInteger tot=BigInteger.ONE;
         System.out.println("0:"+tot);
         class DPValHelp {
-            public BigInteger dpaval(int D, int k, int t, int ai, int bi) {
+            public BigInteger dpaval(int k, int t, int d, int ai, int bi) {
                 if (k<2) throw new RuntimeException("k="+k+"<2");
-                if (k==2) return D==sylcosts[t][bi]+sylcosts[1-t][ai]?BigInteger.ONE:BigInteger.ZERO;
+                if (k==2) return d==sylcost[t][bi]+sylcost[1-t][ai]?BigInteger.ONE:BigInteger.ZERO;
                 if (k==3) {
-                    int tcost=D-(sylcosts[t][bi]+sylcosts[1-t][ai]);
-                    return 0<=tcost&&tcost<binnedSyls.get(t).size()?
-                            new BigInteger(""+(binnedSyls.get(t).get(tcost).size()-(sylcosts[t][invidxs[t][bi]]==tcost?1:0))):
+                    int tcost=d-(sylcost[t][bi]+sylcost[1-t][ai]);
+                    return 0<=tcost&&tcost<sylcnt[t].length?
+                            new BigInteger(""+(sylcnt[t][tcost]-(sylcost[t][invidx[t][bi]]==tcost?1:0))):
                             BigInteger.ZERO;
                 }
-                return dpa.get(D)[k][t].get(ai,bi);
+                return dpa.get(k)[t][d].get(ai,bi);
             }
-            public BigInteger dpbval(int D, int k, int t, int ai, int bi) {
+            public BigInteger dpbval(int k, int t, int d, int ai, int bi) {
                 if (k<2) throw new RuntimeException("k="+k+"<2");
                 if (k==2) return BigInteger.ZERO;
                 if (k==3) {
-                    int tcost=D-(sylcosts[t][bi]+sylcosts[1-t][ai]);
-                    return sylcosts[t][invidxs[t][bi]]==tcost?BigInteger.ONE:BigInteger.ZERO;
+                    int tcost=d-(sylcost[t][bi]+sylcost[1-t][ai]);
+                    return sylcost[t][invidx[t][bi]]==tcost?BigInteger.ONE:BigInteger.ZERO;
                 }
-                return dpb.get(D)[k][t].get(ai,bi);
+                return dpb.get(k)[t][d].get(ai,bi);
             }
         }
         DPValHelp $=new DPValHelp();
-        int D=1;
-        while (true) {
-            for (List<SparseMat[][]> dp:dps) dp.add(new SparseMat[D+1][2]);
-            for (int k=1; k<=D; k++) for (int t=0; t<2; t++) {
-                if (k==1)
-                    tot=tot.add(new BigInteger(""+(D<binnedSyls.get(t).size()?binnedSyls.get(t).get(D).size():0)));
-                else if (k<=3) {
-                    for (int bi=0; bi<nSyls[t]; bi++)
-                    for (int ai=0; ai<nSyls[1-t]; ai++)
-                        tot=tot.add($.dpaval(D,k,t,ai,bi)).add($.dpbval(D,k,t,ai,bi));
-                }
-                else {
-                    dpa.get(D)[k][t]=new SparseMat(nSyls[1-t],nSyls[t]);
-                    dpb.get(D)[k][t]=new SparseMat(nSyls[1-t],nSyls[t]);
-                    if (k>=4)
-                        System.out.println("D,k,t="+D+","+k+","+t);
-                    BigInteger[][] ha=new BigInteger[D][];
-                    //ha(D,A):=SUM_B2 dpa(D,k-1,1-t,B2,A)
-                    for (int d1=k-1; d1<D; d1++) {
-                        ha[d1]=new BigInteger[nSyls[1-t]];
-                        Arrays.fill(ha[d1],BigInteger.ZERO);
-                        for (int ai=0; ai<nSyls[1-t]; ai++)
-                            for (int bi=0; bi<nSyls[t]; bi++)
-                                ha[d1][ai]=ha[d1][ai].add($.dpaval(d1,k-1,1-t,bi,ai));//dpa.get(d1)[k-1][1-t].get(bi,ai));
-                    }
-                    BigInteger[][][] hb=null;
-                    //hb(D,A,M):=SUM_{B2 s.t. avoiding(inv(A),B2,A)&M==empty} dpb(D,k-1,1-t,B2,A)
-                    if (k>=4) {
-                        hb=new BigInteger[D][][];
-                        long st=System.currentTimeMillis();
-                        long reps=0, mark=60000;
-                        for (int d1=k-1; d1<D; d1++) {
-                            hb[d1]=new BigInteger[nSyls[1-t]][1<<(t==0?R:C)];
-                            for (int ai=0; ai<nSyls[1-t]; ai++) {
-                                Arrays.fill(hb[d1][ai],BigInteger.ZERO);
-                                for (int bi=0; bi<nSyls[t]; bi++) {
-                                    int si=avoidmasks[t][ai][bi];
-                                    for (int mi=0; mi<(1<<(t==0?R:C)); mi++)
-                                        if ((mi&si)==0)
-                                            hb[d1][ai][mi]=hb[d1][ai][mi].add($.dpbval(d1,k-1,1-t,bi,ai));//dpb.get(d1)[k-1][1-t].get(bi,ai));
-                                }
-                                reps++;
-                                long time=System.currentTimeMillis()-st;
-                                if (time>=mark) {
-                                    mark+=60000;
-                                    System.out.printf("%12d%12d%n",reps,time);
-                                }
-                            }
-                        }
-                        System.out.printf("%12d%12d%n",reps,System.currentTimeMillis()-st);
-                    }
+        int DMAX=10;
+        List<BigInteger[][]> tots=new ArrayList<>();
+        //tots(k,t,d)=total # good syllable sequences of k syllables, total move count d, last syllable of type t
+        tots.add(null);
+        int K=1;
+        while (K<=DMAX) {
+            tots.add(new BigInteger[2][DMAX+1]);
+            dpa.add(new SparseMat[2][DMAX+1]);
+            dpb.add(new SparseMat[2][DMAX+1]);
+            /*
+            dpa(k,t,d,A,B)=# d-move k-syllable sequences ending in ....C,A,B for any C!=inv(B), where C,B are type t and A is type (1-t)
+            dpb(k,t,d,A,B)=# d-move k-syllable sequences ending in ....inv(B),A,B where B is type t and A is type (1-t)
+            both expressions require that for all sets of consecutive syllables of the form inv(A) B A C, S(inv(A),B,A)&N(C)=empty
 
-                    for (int bi=0; bi<nSyls[t]; bi++) {
-                        int Bc=sylcosts[t][bi];
-                        int ibi=invidxs[t][bi];
-                        int mi=movemasks[t][bi];
-                        for (int ai=0; ai<nSyls[1-t]; ai++) {
-                            BigInteger aval=BigInteger.ZERO;
-                            if (D-Bc>=k-1) {
-                                aval=ha[D-Bc][ai].subtract($.dpaval(D-Bc,k-1,1-t,ibi,ai));//dpa.get(D-Bc)[k-1][1-t].get(ibi,ai));
-                                if (k>=4) {
-                                    aval=aval.add(hb[D-Bc][ai][mi]);
-                                    if (avoidPreprocess[t][ai][bi])
-                                        aval=aval.subtract($.dpbval(D-Bc,k-1,1-t,ibi,ai));//dpb.get(D-Bc)[k-1][1-t].get(ibi,ai));
-                                }
-                            }
-                            //...inv(B) A B
-                            BigInteger bval=BigInteger.ZERO;
-                            if (D-Bc>=k-1) {
-                                bval=bval.add($.dpaval(D-Bc,k-1,1-t,ibi,ai));//dpa.get(D-Bc)[k-1][1-t].get(ibi,ai));
-                                if (k>=4) {
-                                    //...inv(A) inv(B) A B
-                                    if (avoidPreprocess[t][ai][bi])
-                                        bval=bval.add($.dpbval(D-Bc,k-1,1-t,ibi,ai));//dpb.get(D-Bc)[k-1][1-t].get(ibi,ai));
-                                }
-                            }
-                            dpa.get(D)[k][t].set(ai,bi,aval);
-                            dpb.get(D)[k][t].set(ai,bi,bval);
-                        }
+            Then:
+            dpa(k,t,d,A,B)=(SUM_{C!=inv(B)} dpa(k-1,1-t,d-|B|,C,A)) + (SUM_{C!=inv(B) and S(inv(A),C,A)&M(B)==empty} dpb(k-1,1-t,d-|B|,C,A))
+            dpb(k,t,d,A,B)=dpa(k-1,1-t,d-|B|,inv(B),A) + (dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
+
+            k=3 is a base case. k=0,1,2 are dealt with separately
+
+            To reduce running time, for each fixed (k,t), we define some helper variables:
+
+            ha(d,A)=SUM_{C type t} dpa(k-1,1-t,d,C,A)
+            hb(d,A,M)=SUM_{C type t and S(inv(A),C,A)&M==empty} dpb(k-1,1-t,d,C,A)
+
+            Then dpa(k,t,d,A,B) simplifies to:
+                ha(d-|B|,A)-dpa(k-1,1-t,d-|B|,inv(B),A) + hb(d-|B|,A,M(B))-(dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
+             */
+            for (int t=0; t<2; t++) {
+                BigInteger[][] ha=new BigInteger[DMAX+1][nSyls[1-t]];
+                BigInteger[][][] hb=new BigInteger[DMAX+1][nSyls[1-t]][1<<(t==0?R:C)];
+                if (K>=4)
+                for (int d=K-1; d<=DMAX; d++) for (int ai=0; ai<nSyls[1-t]; ai++) {
+                    BigInteger va=BigInteger.ZERO;
+                    for (int ci=0; ci<nSyls[t]; ci++)
+                        va=va.add($.dpaval(K-1,1-t,d,ci,ai));
+                    ha[d][ai]=va;
+                    for (int mask=0; mask<(1<<(t==0?R:C)); mask++) {
+                        BigInteger vb=BigInteger.ZERO;
+                        for (int ci=0; ci<nSyls[t]; ci++)
+                            if ((avoidmasks[t][ai][ci]&mask)==0)
+                                vb=vb.add($.dpbval(K-1,1-t,d,ci,ai));
+                        hb[d][ai][mask]=vb;
                     }
-                    for (List<SparseMat[][]> dp:dps)
-                        for (BigInteger v:dp.get(D)[k][t].vals.values())
-                            tot=tot.add(v);
-                    System.out.println("# nonzero elems in dp("+D+","+k+","+t+"): "+dpa.get(D)[k][t].vals.size()+" "+dpb.get(D)[k][t].vals.size());
                 }
+                for (int d=K; d<=DMAX; d++) {
+                    if (K==1)
+                        tots.get(K)[t][d]=d<sylcnt[t].length?new BigInteger(""+sylcnt[t][d]):BigInteger.ZERO;
+                    else if (K==2) {
+                        long ret=0;
+                        for (int d0=1; d0<d&&d0<sylcnt[t].length&&d-d0<sylcnt[1-t].length; d0++)
+                            ret+=sylcnt[t][d0]*sylcnt[1-t][d-d0];
+                        tots.get(K)[t][d]=new BigInteger(""+ret);
+                    }
+                    else if (K==3) {
+                        BigInteger ret=BigInteger.ZERO;
+                        for (int bi=0; bi<nSyls[t]; bi++) for (int ai=0; ai<nSyls[1-t]; ai++)
+                            ret=ret.add($.dpaval(3,t,d,ai,bi)).add($.dpbval(3,t,d,ai,bi));
+                        tots.get(K)[t][d]=ret;
+                    }
+                    else {
+                        dpa.get(K)[t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
+                        dpb.get(K)[t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
+                        BigInteger ret=BigInteger.ZERO;
+                        for (int ai=0; ai<nSyls[1-t]; ai++)
+                        for (int bi=0; bi<nSyls[t]; bi++) {
+                            int d1=d-sylcost[t][bi], ibi=invidx[t][bi];
+                            if (d1>=K-1) {
+                                BigInteger va=ha[d1][ai].subtract($.dpaval(K-1,1-t,d1,ibi,ai))
+                                        .add(hb[d1][ai][movemask[t][bi]]);
+                                if (avoidPreprocess[t][ai][bi]) va=va.subtract($.dpbval(K-1,1-t,d1,ibi,ai));
+                                dpa.get(K)[t][d].set(ai,bi,va);
+                                BigInteger vb=$.dpaval(K-1,1-t,d1,ibi,ai);
+                                if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(K-1,1-t,d1,ibi,ai));
+                                dpb.get(K)[t][d].set(ai,bi,vb);
+                                ret=ret.add(va).add(vb);
+                            }
+                        }
+                        tots.get(K)[t][d]=ret;
+                        System.out.println("# nonzero elems in dp("+K+","+t+","+d+"): "+dpa.get(K)[t][d].vals.size()+" "+dpb.get(K)[t][d].vals.size());
+                    }
+                }
+                for (int k=1; k<=K; k++)
+                    tot=tot.add(tots.get(k)[t][K]);
             }
-            System.out.println(D+":"+tot);
-            if (tot.compareTo(target)>=0) {
-                System.out.println("God's number lower bound="+D);
-                break;
-            }
-            D++;
+            System.out.println(K+":"+tot+"\t (time (ms)="+(System.currentTimeMillis()-timest)+")");
+            if (tot.compareTo(target)>=0) break;
+            //delete unused dp arrays
+            dpa.set(K-1,null);
+            dpb.set(K-1,null);
+            K++;
         }
         System.out.println("DP time="+(System.currentTimeMillis()-timest));
     }
