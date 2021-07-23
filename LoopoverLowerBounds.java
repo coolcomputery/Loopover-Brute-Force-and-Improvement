@@ -250,7 +250,8 @@ public class LoopoverLowerBounds {
             }
         }
         DPValHelp $=new DPValHelp();
-        int DMAX=10;
+        int DMAX=13;
+        System.out.println("DMAX="+DMAX);
         List<BigInteger[][]> tots=new ArrayList<>();
         //tots(k,t,d)=total # good syllable sequences of k syllables, total move count d, last syllable of type t
         tots.add(null);
@@ -269,6 +270,8 @@ public class LoopoverLowerBounds {
             dpb(k,t,d,A,B)=dpa(k-1,1-t,d-|B|,inv(B),A) + (dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
 
             k=3 is a base case. k=0,1,2 are dealt with separately
+
+            if k>d, then dpa(k,t,d,A,B)=dpb(k,t,d,A,B)=0
 
             To reduce running time, for each fixed (k,t), we define some helper variables:
 
@@ -314,19 +317,19 @@ public class LoopoverLowerBounds {
                         dpa.get(K)[t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
                         dpb.get(K)[t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
                         BigInteger ret=BigInteger.ZERO;
-                        for (int ai=0; ai<nSyls[1-t]; ai++)
                         for (int bi=0; bi<nSyls[t]; bi++) {
-                            int d1=d-sylcost[t][bi], ibi=invidx[t][bi];
-                            if (d1>=K-1) {
-                                BigInteger va=ha[d1][ai].subtract($.dpaval(K-1,1-t,d1,ibi,ai))
-                                        .add(hb[d1][ai][movemask[t][bi]]);
-                                if (avoidPreprocess[t][ai][bi]) va=va.subtract($.dpbval(K-1,1-t,d1,ibi,ai));
-                                dpa.get(K)[t][d].set(ai,bi,va);
-                                BigInteger vb=$.dpaval(K-1,1-t,d1,ibi,ai);
-                                if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(K-1,1-t,d1,ibi,ai));
-                                dpb.get(K)[t][d].set(ai,bi,vb);
-                                ret=ret.add(va).add(vb);
-                            }
+                            int nd=d-sylcost[t][bi], ibi=invidx[t][bi];
+                            if (nd>=K-1)
+                                for (int ai=0; ai<nSyls[1-t]; ai++) {
+                                    BigInteger va=ha[nd][ai].subtract($.dpaval(K-1,1-t,nd,ibi,ai))
+                                            .add(hb[nd][ai][movemask[t][bi]]);
+                                    if (avoidPreprocess[t][ai][bi]) va=va.subtract($.dpbval(K-1,1-t,nd,ibi,ai));
+                                    dpa.get(K)[t][d].set(ai,bi,va);
+                                    BigInteger vb=$.dpaval(K-1,1-t,nd,ibi,ai);
+                                    if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(K-1,1-t,nd,ibi,ai));
+                                    dpb.get(K)[t][d].set(ai,bi,vb);
+                                    ret=ret.add(va).add(vb);
+                                }
                         }
                         tots.get(K)[t][d]=ret;
                         System.out.println("# nonzero elems in dp("+K+","+t+","+d+"): "+dpa.get(K)[t][d].vals.size()+" "+dpb.get(K)[t][d].vals.size());
@@ -338,6 +341,16 @@ public class LoopoverLowerBounds {
             System.out.println(K+":"+tot+"\t (time (ms)="+(System.currentTimeMillis()-timest)+")");
             if (tot.compareTo(target)>=0) break;
             //delete unused dp arrays
+            if (K>=4) {
+                long mem=0;
+                for (int t=0; t<2; t++)
+                    for (int d=K; d<=DMAX; d++) {
+                        mem+=dpa.get(K)[t][d].vals.size()+dpb.get(K)[t][d].vals.size();
+                        if (K>=5)
+                            mem+=dpa.get(K-1)[t][d].vals.size()+dpb.get(K-1)[t][d].vals.size();
+                }
+                System.out.println("tot # of map keys="+mem);
+            }
             dpa.set(K-1,null);
             dpb.set(K-1,null);
             K++;
