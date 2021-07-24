@@ -229,7 +229,7 @@ public class LoopoverLowerBounds {
                 else throw idxerr(r,c);
             }
         }
-        int DMAX=6;
+        int DMAX=15;
         System.out.println("DMAX="+DMAX);
         SparseMat[][][] dpb=new SparseMat[DMAX+1][][];
         BigInteger[][][][] ha=new BigInteger[DMAX+1][2][][];
@@ -313,6 +313,10 @@ public class LoopoverLowerBounds {
                 Then dpa(k,t,d,A,B) simplifies to:
                     ha(d-|B|,A)-dpa(k-1,1-t,d-|B|,inv(B),A) + hb(d-|B|,A,M(B))-(dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
                     == ha(d-|B|,A)+hb(d-|B|,A,M(B))-dpb(k,t,d,A,B)
+
+                To efficiently comput hb(d,A,M) for fixed (d,A): we use more helper variables:
+                    hc(M)=SUM_{C type t and S(inv(A),C,A)==M} dpb(k-1,1-t,d,C,A)
+                Then hb(d,A,M)=SUM_{M' s.t. M'&M==empty} hc(M')
                  */
                 ha[k][t]=new BigInteger[DMAX+1][nSyls[1-t]];
                 hb[k][t]=new BigInteger[DMAX+1][nSyls[1-t]][1<<(t==0?R:C)];
@@ -321,20 +325,27 @@ public class LoopoverLowerBounds {
                     for (int ci=0; ci<nSyls[t]; ci++)
                         va=va.add($.dpaval(k-1,1-t,d,ci,ai));
                     ha[k][t][d][ai]=va;
+                    BigInteger[] hc=new BigInteger[1<<(t==0?R:C)];
+                    Arrays.fill(hc,BigInteger.ZERO);
+                    for (int ci=0; ci<nSyls[t]; ci++) {
+                        int m=avoidmasks[t][ai][ci];
+                        hc[m]=hc[m].add($.dpbval(k-1,1-t,d,ci,ai));
+                    }
                     for (int mask=0; mask<(1<<(t==0?R:C)); mask++) {
                         BigInteger vb=BigInteger.ZERO;
-                        for (int ci=0; ci<nSyls[t]; ci++)
-                            if ((avoidmasks[t][ai][ci]&mask)==0)
-                                vb=vb.add($.dpbval(k-1,1-t,d,ci,ai));
+                        for (int m=0; m<(1<<(t==0?R:C)); m++)
+                            if ((m&mask)==0)
+                                vb=vb.add(hc[m]);
                         hb[k][t][d][ai][mask]=vb;
                     }
                 }
                 dpb[k][t]=new SparseMat[DMAX+1];
                 for (int d=k; d<=DMAX; d++)
                     dpb[k][t][d]=new SparseMat(nSyls[1-t],nSyls[t]);
-                for (int nd=k-1; nd<DMAX; nd++) {
-                    System.out.println("nd="+nd);
+                System.out.print("tot # of map keys in use");
+                for (int nd=DMAX-1; nd>=k-1; nd--) {
                     for (int d=nd+1; d<=DMAX; d++)
+                    if (d-nd<binnedSyls[t].length)
                     for (int bi:binnedSyls[t][d-nd]) {
                         int ibi=invidx[t][bi];
                         for (int ai=0; ai<nSyls[1-t]; ai++) {
@@ -350,10 +361,11 @@ public class LoopoverLowerBounds {
                         if (k>=5&&dpb[k-1][1-t][d]!=null)
                             mem+=dpb[k-1][1-t][d].vals.size();
                     }
-                    System.out.println("tot # of map keys in use="+mem);
+                    System.out.print("-->"+mem);
                     if (k>=5)
                         dpb[k-1][1-t][nd]=null;
                 }
+                System.out.println();
                 dpb[k-1][1-t]=null;
             }
         }
