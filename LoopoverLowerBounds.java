@@ -184,22 +184,15 @@ public class LoopoverLowerBounds {
             }
         }
         //System.out.println(Arrays.toString(avoiding(5,5,new int[] {1,0,0,0,0},new int[] {1,0,0,0,0},new int[] {-1,0,0,0,0},0)));
-        boolean[][][] avoidPreprocess=new boolean[2][][];
         int[][][] avoidmasks=new int[2][][];
         //avoidPreprocess(A,B)=S(inv(A),inv(B),A)&M(B)==empty
         for (int t=0; t<2; t++) {
-            avoidPreprocess[t]=new boolean[nSyls[1-t]][nSyls[t]];
             avoidmasks[t]=new int[nSyls[1-t]][nSyls[t]];
             for (int[] A:syls.get(1-t)) {
                 int ai=idx(R,C,A,1-t);
                 int[] iA=inv(R,C,A,1-t);
-                for (int[] B:syls.get(t)) {
-                    int bi=idx(R,C,B,t);
-                    avoidmasks[t][ai][bi]=avoiding(R,C,iA,B,A,t);
-                    int ibi=invidx[t][bi];
-                    avoidPreprocess[t][ai][ibi]=
-                            (avoidmasks[t][ai][bi]&movemask[t][ibi])==0;
-                }
+                for (int[] B:syls.get(t))
+                    avoidmasks[t][ai][idx(R,C,B,t)]=avoiding(R,C,iA,B,A,t);
             }
         }
 
@@ -207,29 +200,53 @@ public class LoopoverLowerBounds {
 
         timest=System.currentTimeMillis();
         class SparseMat {
-            Map<Integer,BigInteger> vals;
             int R, C;
-            SparseMat(int R, int C) {
-                this.R=R; this.C=C;
-                vals=new HashMap<>();
-            }
             private RuntimeException idxerr(int r, int c) {
                 return new RuntimeException(String.format("Sparse matrix out of bounds: (r,c)=(%d,%d), (R,C)=(%d,%d)",r,c,R,C));
+            }
+            boolean arrmode;
+            Map<Integer,BigInteger> mvals;
+            BigInteger[] vals;
+            int nonzerocnt;
+            SparseMat(int R, int C) {
+                this.R=R; this.C=C;
+                mvals=new HashMap<>();
+                nonzerocnt=0;
+                arrmode=false;
             }
             public void set(int r, int c, BigInteger v) {
                 if (0<=r&&r<R&&0<=c&&c<C) {
                     int i=r*C+c;
-                    if (v.equals(BigInteger.ZERO)) vals.remove(i);
-                    else vals.put(i,v);
+                    boolean zero0=(arrmode?vals[i]:mvals.get(i))==null;
+                    if (arrmode)
+                        vals[i]=v.equals(BigInteger.ZERO)?null:v;
+                    else {
+                        if (v.equals(BigInteger.ZERO)) mvals.remove(i);
+                        else mvals.put(i,v);
+                    }
+                    nonzerocnt+=((arrmode?vals[i]:mvals.get(i))==null?0:1)-(zero0?0:1);
+                    if (nonzerocnt>=1000_000&&!arrmode) {
+                        arrmode=true;
+                        vals=new BigInteger[R*C];
+                        for (int idx:mvals.keySet()) vals[idx]=mvals.get(idx);
+                        mvals=null;
+                    }
                 }
                 else throw idxerr(r,c);
             }
             public BigInteger get(int r, int c) {
-                if (0<=r&&r<R&&0<=c&&c<C) return vals.getOrDefault(r*C+c,BigInteger.ZERO);
+                if (0<=r&&r<R&&0<=c&&c<C) {
+                    int i=r*C+c;
+                    BigInteger v=arrmode?vals[i]:mvals.get(i);
+                    return v==null?BigInteger.ZERO:v;
+                }
                 else throw idxerr(r,c);
             }
+            public int nonzerocnt() {
+                return nonzerocnt;
+            }
         }
-        int DMAX=15;
+        int DMAX=22;
         System.out.println("DMAX="+DMAX);
         SparseMat[][][] dpb=new SparseMat[DMAX+1][][];
         BigInteger[][][][] ha=new BigInteger[DMAX+1][2][][];
@@ -314,13 +331,13 @@ public class LoopoverLowerBounds {
                     ha(d-|B|,A)-dpa(k-1,1-t,d-|B|,inv(B),A) + hb(d-|B|,A,M(B))-(dpb(k-1,1-t,d-|B|,inv(B),A) if S(inv(A),inv(B),A)&M(B)==empty else 0)
                     == ha(d-|B|,A)+hb(d-|B|,A,M(B))-dpb(k,t,d,A,B)
 
-                To efficiently comput hb(d,A,M) for fixed (d,A): we use more helper variables:
+                To efficiently compute hb(d,A,M) for fixed (d,A): we use more helper variables:
                     hc(M)=SUM_{C type t and S(inv(A),C,A)==M} dpb(k-1,1-t,d,C,A)
                 Then hb(d,A,M)=SUM_{M' s.t. M'&M==empty} hc(M')
                  */
-                ha[k][t]=new BigInteger[DMAX+1][nSyls[1-t]];
-                hb[k][t]=new BigInteger[DMAX+1][nSyls[1-t]][1<<(t==0?R:C)];
-                for (int d=k-1; d<=DMAX; d++) for (int ai=0; ai<nSyls[1-t]; ai++) {
+                ha[k][t]=new BigInteger[DMAX][nSyls[1-t]];
+                hb[k][t]=new BigInteger[DMAX][nSyls[1-t]][1<<(t==0?R:C)];
+                for (int d=k-1; d<DMAX; d++) for (int ai=0; ai<nSyls[1-t]; ai++) {
                     BigInteger va=BigInteger.ZERO;
                     for (int ci=0; ci<nSyls[t]; ci++)
                         va=va.add($.dpaval(k-1,1-t,d,ci,ai));
@@ -345,21 +362,22 @@ public class LoopoverLowerBounds {
                 System.out.print("tot # of map keys in use");
                 for (int nd=DMAX-1; nd>=k-1; nd--) {
                     for (int d=nd+1; d<=DMAX; d++)
-                    if (d-nd<binnedSyls[t].length)
-                    for (int bi:binnedSyls[t][d-nd]) {
-                        int ibi=invidx[t][bi];
-                        for (int ai=0; ai<nSyls[1-t]; ai++) {
-                            BigInteger vb=$.dpaval(k-1,1-t,nd,ibi,ai);
-                            if (avoidPreprocess[t][ai][bi]) vb=vb.add($.dpbval(k-1,1-t,nd,ibi,ai));
-                            dpb[k][t][d].set(ai,bi,vb);
-                            tots[k][t][d]=tots[k][t][d].add(vb).add($.dpaval(k,t,d,ai,bi));
-                        }
-                    }
+                        if (d-nd<binnedSyls[t].length)
+                            for (int bi:binnedSyls[t][d-nd]) {
+                                int ibi=invidx[t][bi];
+                                for (int ai=0; ai<nSyls[1-t]; ai++) {
+                                    BigInteger vb=$.dpaval(k-1,1-t,nd,ibi,ai);
+                                    if ((avoidmasks[t][ai][bi]&movemask[t][ibi])==0)
+                                        vb=vb.add($.dpbval(k-1,1-t,nd,ibi,ai));
+                                    dpb[k][t][d].set(ai,bi,vb);
+                                    tots[k][t][d]=tots[k][t][d].add(vb).add($.dpaval(k,t,d,ai,bi));
+                                }
+                            }
                     long mem=0;
                     for (int d=k; d<=DMAX; d++) {
-                        mem+=dpb[k][t][d].vals.size();
+                        mem+=dpb[k][t][d].nonzerocnt();
                         if (k>=5&&dpb[k-1][1-t][d]!=null)
-                            mem+=dpb[k-1][1-t][d].vals.size();
+                            mem+=dpb[k-1][1-t][d].nonzerocnt();
                     }
                     System.out.print("-->"+mem);
                     if (k>=5)
@@ -367,6 +385,8 @@ public class LoopoverLowerBounds {
                 }
                 System.out.println();
                 dpb[k-1][1-t]=null;
+                ha[k-1][1-t]=null;
+                hb[k-1][1-t]=null;
             }
         }
         BigInteger tot=BigInteger.ONE;
