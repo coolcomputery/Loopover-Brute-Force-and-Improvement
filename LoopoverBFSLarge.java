@@ -73,13 +73,6 @@ public class LoopoverBFSLarge {
                 if ((Rfree[r]||Cfree[c])&&!(Rnfree[r]||Cnfree[c]))
                     solvedscrm[idx++]=tofree[r*C+c];
         System.out.println(Arrays.toString(solvedscrm));
-        ncombos=1;
-        for (int rep=0; rep<K; rep++) ncombos*=Nfree-rep;
-        System.out.println("ncombos="+ncombos);
-        if (ncombos/64>400_000_000) throw new RuntimeException("Too many combinations to handle.");
-        codelen=bb95(ncombos).length();
-        mvilen=bb95(M).length();
-        System.out.println("every combo represented with "+ codelen +" characters");
         //moves: every move is represented with [t,a,r]:
         //t: type (0=row shift, 1=clm shift)
         //a: the a-th (row if t==0, else clm)
@@ -91,28 +84,32 @@ public class LoopoverBFSLarge {
             //mvactions[m][i]=free loc. that i-th free loc. will go to after move m is applied
             int idx=0;
             for (int mr=0; mr<R; mr++)
-            if (Rfree[mr])
-            for (int s=-1; s<=1; s+=2) {
-                mvs[idx]=new int[] {0,mr,s};
-                mvactions[idx]=new int[Nfree];
-                for (int r=0; r<R; r++)
-                    for (int c=0; c<C; c++)
-                        if (Rfree[r]||Cfree[c])
-                            mvactions[idx][tofree[r*C+c]]=tofree[r*C+(r==mr?mod(c+s,C):c)];
-                idx++;
-            }
+                if (Rfree[mr])
+                    for (int s=-1; s<=1; s+=2) {
+                        mvs[idx]=new int[] {0,mr,s};
+                        mvactions[idx]=new int[Nfree];
+                        for (int r=0; r<R; r++)
+                            for (int c=0; c<C; c++)
+                                if (Rfree[r]||Cfree[c])
+                                    mvactions[idx][tofree[r*C+c]]=tofree[r*C+(r==mr?mod(c+s,C):c)];
+                        idx++;
+                    }
             for (int mc=0; mc<C; mc++)
-            if (Cfree[mc])
-            for (int s=-1; s<=1; s+=2) {
-                mvs[idx]=new int[] {1,mc,s};
-                mvactions[idx]=new int[Nfree];
-                for (int r=0; r<R; r++)
-                    for (int c=0; c<C; c++)
-                        if (Rfree[r]||Cfree[c])
-                            mvactions[idx][tofree[r*C+c]]=tofree[(c==mc?mod(r+s,R):r)*C+c];
-                idx++;
-            }
+                if (Cfree[mc])
+                    for (int s=-1; s<=1; s+=2) {
+                        mvs[idx]=new int[] {1,mc,s};
+                        mvactions[idx]=new int[Nfree];
+                        for (int r=0; r<R; r++)
+                            for (int c=0; c<C; c++)
+                                if (Rfree[r]||Cfree[c])
+                                    mvactions[idx][tofree[r*C+c]]=tofree[(c==mc?mod(r+s,R):r)*C+c];
+                        idx++;
+                    }
         }
+        //move sequence reduction
+        //when doing two moves of the same type, one after the other: [t,a,r], [t,b,s]:
+        //WLOG a<=b, or else the two moves can be arranged to satisfy this condition without changing the final scramble
+        //if a==b, then r+s!=0, else the two moves cancel each other out
         mvreduc=new int[M+1][];
         for (int m=0; m<M; m++) {
             List<Integer> l=new ArrayList<>();
@@ -127,26 +124,15 @@ public class LoopoverBFSLarge {
         }
         mvreduc[M]=new int[M];
         for (int i=0; i<M; i++) mvreduc[M][i]=i;
-        //move sequence reduction
-        //when doing two moves of the same type, one after the other: [t,a,r], [t,b,s]:
-        //WLOG a<=b, or else the two moves can be arranged to satisfy this condition without changing the final scramble
-        //if a==b, then r+s!=0, else the two moves cancel each other out
-        /*mvreduc=new int[M+1][];
-        for (int m=0; m<M; m++) {
-            List<Integer> l=new ArrayList<>();
-            for (int m2=0; m2<M; m2++)
-                if (mvs[m][0]!=mvs[m2][0]
-                        ||mvs[m][1]<mvs[m2][1]
-                        ||(mvs[m][1]==mvs[m2][1]&&mvs[m][2]+mvs[m2][2]!=0))
-                    l.add(m2);
-            mvreduc[m]=new int[l.size()];
-            for (int i=0; i<l.size(); i++)
-                mvreduc[m][i]=l.get(i);
-        }
-        mvreduc[M]=new int[M];
-        for (int i=0; i<M; i++) mvreduc[M][i]=i;*/
     }
     public void bfs() throws IOException {
+        ncombos=1;
+        for (int rep=0; rep<K; rep++) ncombos*=Nfree-rep;
+        System.out.println("ncombos="+ncombos);
+        if (ncombos/64>400_000_000) throw new RuntimeException("Too many combinations to handle.");
+        codelen=bb95(ncombos).length();
+        mvilen=bb95(M).length();
+        System.out.println("every combo represented with "+ codelen +" characters");
         //BFS
         visited=new long[(int)(ncombos/64+1)];
         solvedscrmcode=comboCode(solvedscrm);
@@ -209,7 +195,7 @@ public class LoopoverBFSLarge {
       --> encode A as J_(N-1)+N*(J_(N-2)+(N-1)*(...+(N-K+2)*J_(N-K)...)
     for this program, N=Nfree, K=K
     */
-    private long comboCode(int[] A) {
+    public long comboCode(int[] A) {
         int[] P=new int[Nfree];
         for (int i=0; i<Nfree; i++) P[i]=i;
         int[] L=P.clone();
@@ -228,7 +214,7 @@ public class LoopoverBFSLarge {
         }
         return out;
     }
-    private long comboCode(int[] A, int[] f) {
+    public long comboCode(int[] A, int[] f) {
         int[] P=new int[Nfree];
         for (int i=0; i<Nfree; i++) P[i]=i;
         int[] L=P.clone();
@@ -243,7 +229,7 @@ public class LoopoverBFSLarge {
         }
         return out;
     }
-    private int[] codeCombo(long code) {
+    public int[] codeCombo(long code) {
         int[] P=new int[Nfree];
         for (int i=0; i<Nfree; i++) P[i]=i;
         for (int v=Nfree; v>Nfree-K; v--) {
