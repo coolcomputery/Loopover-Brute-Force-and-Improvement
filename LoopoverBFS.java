@@ -1,5 +1,6 @@
 import java.util.*;
 public class LoopoverBFS {
+    //TODO: REFACTOR USING ABSTRACT CLASS
     private static int mod(int n, int k) {
         return (n%k+k)%k;
     }
@@ -26,7 +27,7 @@ public class LoopoverBFS {
     //define absolute indexing as mapping coordinate (r,c) to index r*C+c
     //every scramble is represented by an array L[], where piece i is at location L[i]
     private int R, C;
-    private int Nfree;
+    private int F;
     private boolean[][] rcfree;
     //a location (r,c) is free iff Rfree[r]||Cfree[c]
     private int[] tofree, freeto;
@@ -81,32 +82,23 @@ public class LoopoverBFS {
         this.R=R; this.C=C;
         rcfree=parseState(state0);
         tofree=new int[R*C]; freeto=new int[R*C];
-        Nfree=0;
+        F=0;
         for (int r=0; r<R; r++)
             for (int c=0; c<C; c++)
                 if (free(rcfree,r,c)) {
-                    tofree[r*C+c]=Nfree;
-                    freeto[Nfree]=r*C+c;
-                    Nfree++;
+                    tofree[r*C+c]=F;
+                    freeto[F]=r*C+c;
+                    F++;
                 }
                 else tofree[r*C+c]=-1;
-        {
-            int[] tmp=new int[Nfree];
-            System.arraycopy(freeto,0,tmp,0,Nfree);
-            freeto=tmp;
-        }
+        freeto=Arrays.copyOfRange(freeto,0, F);
         boolean[][] nrcfree=parseState(state1);
-        K=0;
+        K=0; pcstosolve=new int[R*C];
         for (int r=0; r<R; r++)
             for (int c=0; c<C; c++)
                 if (free(rcfree,r,c)&&!free(nrcfree,r,c))
-                    K++;
-        pcstosolve=new int[K];
-        for (int r=0, idx=0; r<R; r++)
-            for (int c=0; c<C; c++)
-                if (free(rcfree,r,c)&&!free(nrcfree,r,c))
-                    pcstosolve[idx++]=r*C+c;
-        System.out.println("locations of pieces to solve="+Arrays.toString(pcstosolve));
+                    pcstosolve[K++]=r*C+c;
+        pcstosolve=Arrays.copyOfRange(pcstosolve,0,K);
         for (int r=0; r<R; r++) {
             for (int c=0; c<C; c++)
                 System.out.printf("%4s",
@@ -119,7 +111,7 @@ public class LoopoverBFS {
         }
         {
             long tmp=1;
-            for (int rep=0; rep<K; rep++) tmp*=Nfree-rep;
+            for (int rep=0; rep<K; rep++) tmp*=F-rep;
             if (tmp>400_000_000) throw new RuntimeException("Too many combinations to handle.");
             ncombos=(int)tmp;
         }
@@ -139,8 +131,8 @@ public class LoopoverBFS {
                 if (rcfree[0][mr])
                     for (int s=-1; s<=1; s+=2) {
                         mvs[idx]=new int[] {0,mr,s};
-                        mvactions[idx]=new int[Nfree];
-                        for (int i=0; i<Nfree; i++) {
+                        mvactions[idx]=new int[F];
+                        for (int i=0; i<F; i++) {
                             int r=freeto[i]/C, c=freeto[i]%C;
                             mvactions[idx][i]=tofree[r*C+(r==mr?mod(c+s,C):c)];
                         }
@@ -150,8 +142,8 @@ public class LoopoverBFS {
                 if (rcfree[1][mc])
                     for (int s=-1; s<=1; s+=2) {
                         mvs[idx]=new int[] {1,mc,s};
-                        mvactions[idx]=new int[Nfree];
-                        for (int i=0; i<Nfree; i++) {
+                        mvactions[idx]=new int[F];
+                        for (int i=0; i<F; i++) {
                             int r=freeto[i]/C, c=freeto[i]%C;
                             mvactions[idx][i]=tofree[(c==mc?mod(r+s,R):r)*C+c];
                         }
@@ -209,13 +201,13 @@ public class LoopoverBFS {
     for this program, N=Nfree, K=K
     */
     public int comboCode(int[] A) {
-        int[] P=new int[Nfree];
-        for (int i=0; i<Nfree; i++) P[i]=i;
+        int[] P=new int[F];
+        for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
-        for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
+        for (int i=F-1, pow=1; i>=F-K; i--) {
             //swap idxs i and L[A[i-(N-K)]] in P
-            int j=L[A[i-(Nfree-K)]];
+            int j=L[A[i-(F-K)]];
             int pi=P[i];//, pj=P[j];
             //P[i]=pj; //<--idx i will never be touched again
             P[j]=pi;
@@ -227,16 +219,13 @@ public class LoopoverBFS {
         }
         return out;
     }
-    public int abscomboCode(int[] scrm) {
-        return comboCode(scrm,tofree);
-    }
     private int comboCode(int[] A, int[] f) {
-        int[] P=new int[Nfree];
-        for (int i=0; i<Nfree; i++) P[i]=i;
+        int[] P=new int[F];
+        for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
-        for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
-            int j=L[f[A[i-(Nfree-K)]]];
+        for (int i=F-1, pow=1; i>=F-K; i--) {
+            int j=L[f[A[i-(F-K)]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
@@ -247,12 +236,12 @@ public class LoopoverBFS {
     }
     public int codeAfterScramble(int[] scrm0, int[] scrm1) {
         //A[i]=tofree[scrm0[scrm1[pcstosolve[i]]]]
-        int[] P=new int[Nfree];
-        for (int i=0; i<Nfree; i++) P[i]=i;
+        int[] P=new int[F];
+        for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
-        for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
-            int j=L[tofree[scrm0[scrm1[pcstosolve[i-(Nfree-K)]]]]];
+        for (int i=F-1, pow=1; i>=F-K; i--) {
+            int j=L[tofree[scrm0[scrm1[pcstosolve[i-(F-K)]]]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
@@ -263,12 +252,27 @@ public class LoopoverBFS {
     }
     public int codeAfterScramble(int[] scrm0, int[] scrm1, int[] scrm2) {
         //A[i]=tofree[scrm0[scrm1[scrm2[pcstosolve[i]]]]]
-        int[] P=new int[Nfree];
-        for (int i=0; i<Nfree; i++) P[i]=i;
+        int[] P=new int[F];
+        for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
-        for (int i=Nfree-1, pow=1; i>=Nfree-K; i--) {
-            int j=L[tofree[scrm0[scrm1[scrm2[pcstosolve[i-(Nfree-K)]]]]]];
+        for (int i=F-1, pow=1; i>=F-K; i--) {
+            int j=L[tofree[scrm0[scrm1[scrm2[pcstosolve[i-(F-K)]]]]]];
+            int pi=P[i];
+            P[j]=pi;
+            L[pi]=j;
+            out+=pow*j;
+            pow*=i+1;
+        }
+        return out;
+    }
+    public int codeAfterScramble(int[] scrm0, int[] scrm1, int[] scrm2, int[] scrm3) {
+        int[] P=new int[F];
+        for (int i=0; i<F; i++) P[i]=i;
+        int[] L=P.clone();
+        int out=0;
+        for (int i=F-1, pow=1; i>=F-K; i--) {
+            int j=L[tofree[scrm0[scrm1[scrm2[scrm3[pcstosolve[i-(F-K)]]]]]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
@@ -278,43 +282,21 @@ public class LoopoverBFS {
         return out;
     }
     private int[] codeCombo(int code) {
-        int[] P=new int[Nfree];
-        for (int i=0; i<Nfree; i++) P[i]=i;
-        for (int v=Nfree; v>Nfree-K; v--) {
+        int[] P=new int[F];
+        for (int i=0; i<F; i++) P[i]=i;
+        for (int v=F; v> F-K; v--) {
             int i=v-1, j=code%v;
             code/=v;
             int pi=P[i]; P[i]=P[j]; P[j]=pi;
         }
         int[] out=new int[K];
-        System.arraycopy(P,Nfree-K,out,0,K);
+        System.arraycopy(P, F-K,out,0,K);
         return out;
     }
-    //in all below methods, scrm is defined s.t. scrm[i]=location that pc i goes to, in absolute indexing
-    public int depth(int[] scrm) {
-        return depth(abscomboCode(scrm));
-    }
-    public int[] solveaction(int[] scrm) {
-        return solveaction(abscomboCode(scrm));
-    }
-    public List<int[]> solvemvs(int[] scrm) {
-        return solvemvs(abscomboCode(scrm));
-    }
-    public void computeActions(int D) {
-        //compute the solveactions of all combos with depth D and store them in a table
-        for (int code:codesAtDepth(D)) {
+    public void computeAllActions() {
+        for (int code=0; code<ncombos; code++) if (data[code]!=-1) {
             solveactions[code]=solveaction_help(code);
             scrambleactions[code]=inv(solveactions[code]);
-        }
-    }
-    public void computeAllActions() {
-        for (int d=0; d<D; d++)
-            computeActions(d);
-    }
-    public void clearActions(int D) { //undo the previous method
-        //this is to avoid using too much Java heap space
-        for (int code:codesAtDepth(D)) {
-            solveactions[code]=null;
-            scrambleactions[code]=null;
         }
     }
     public int[] solveaction(int code) {
@@ -322,12 +304,12 @@ public class LoopoverBFS {
     }
     private int[] solveaction_help(int code) {
         if (data[code]==-1) throw new RuntimeException("Invalid combination code: "+code);
-        int[] out=new int[Nfree];
-        for (int i=0; i<Nfree; i++) out[i]=i;
+        int[] out=new int[F];
+        for (int i=0; i<F; i++) out[i]=i;
         for (int c=code; depth(c)>0; c=par(c)) {
             int[] mva=inv(mvactions[mvi(c)]);
-            int[] nout=new int[Nfree];
-            for (int i=0; i<Nfree; i++)
+            int[] nout=new int[F];
+            for (int i=0; i<F; i++)
                 nout[i]=mva[out[i]];
             out=nout;
         }
@@ -358,9 +340,5 @@ public class LoopoverBFS {
         for (int a=0; a<R*C; a++)
             out[a]=tofree[a]==-1?a:freeto[mva[tofree[a]]];
         return out;
-    }
-    public static void main(String[] args) {
-        new LoopoverBFS(5,5,"11111x11111","00111x00111");
-        new LoopoverBFS(5,5,"00111x00111","00011x00011");
     }
 }
