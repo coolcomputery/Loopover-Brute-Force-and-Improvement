@@ -189,6 +189,9 @@ public class LoopoverBFS {
         System.out.println("D="+D);
         System.out.println("total BFS time="+(System.currentTimeMillis()-st));
     }
+    public void clearFronts() {
+        fronts=null;
+    }
     public int[] codesAtDepth(int d) {
         return fronts.get(d);
     }
