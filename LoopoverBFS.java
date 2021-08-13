@@ -65,6 +65,12 @@ public class LoopoverBFS {
     private List<int[]> fronts; //BFS fronts
     public int D; //(largest depth of BFS tree)+1
     //c-->(depth,move from parent combo to c,parent combo)
+    public int[] tofree() {
+        return tofree;
+    }
+    public int[] freeto() {
+        return freeto;
+    }
     private long compressed(int depth, int parent, int move) {
         return ((long)depth*M+move)*ncombos+parent;
     }
@@ -284,7 +290,7 @@ public class LoopoverBFS {
         }
         return out;
     }
-    private int[] codeCombo(int code) {
+    public int[] codeCombo(int code) {
         int[] P=new int[F];
         for (int i=0; i<F; i++) P[i]=i;
         for (int v=F; v> F-K; v--) {
