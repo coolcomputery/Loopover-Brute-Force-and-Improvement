@@ -18,12 +18,6 @@ public class LoopoverBFS {
     private static boolean free(boolean[][] boardState, int r, int c) {
         return boardState[0][r]||boardState[1][c];
     }
-    public static String mvseqStr(List<int[]> S) {
-        StringBuilder str=new StringBuilder();
-        for (int[] m:S)
-            str.append(" ").append(m[0]==0?"R":"C").append(m[1]).append(m[2]==1?" ":m[2]==-1?"'":("("+m[2]+")"));
-        return str.toString();
-    }
     //define absolute indexing as mapping coordinate (r,c) to index r*C+c
     //every scramble is represented by an array L[], where piece i is at location L[i]
     private int R, C;
@@ -33,7 +27,7 @@ public class LoopoverBFS {
     private int[] tofree, freeto;
     //tofree[r*C+c]=i, where free location (r,c) is assigned to index i
     public int K;
-    public int[] pcstosolve; //list of pieces this tree tries to solve, in absolute indexing
+    public int[] target; //list of pieces this tree tries to solve, in absolute indexing
     private int[][] mvactions, mvs;
     private int[][] solveactions, scrambleactions;
     public static int[][] mvreduc(int[][] mvs) {
@@ -99,12 +93,12 @@ public class LoopoverBFS {
                 else tofree[r*C+c]=-1;
         freeto=Arrays.copyOfRange(freeto,0, F);
         boolean[][] nrcfree=parseState(state1);
-        K=0; pcstosolve=new int[R*C];
+        K=0; target =new int[R*C];
         for (int r=0; r<R; r++)
             for (int c=0; c<C; c++)
                 if (free(rcfree,r,c)&&!free(nrcfree,r,c))
-                    pcstosolve[K++]=r*C+c;
-        pcstosolve=Arrays.copyOfRange(pcstosolve,0,K);
+                    target[K++]=r*C+c;
+        target =Arrays.copyOfRange(target,0,K);
         for (int r=0; r<R; r++) {
             for (int c=0; c<C; c++)
                 System.out.printf("%4s",
@@ -165,7 +159,7 @@ public class LoopoverBFS {
         {
             int[] solvedscrm=new int[K];
             for (int i=0; i<K; i++)
-                solvedscrm[i]=tofree[pcstosolve[i]];
+                solvedscrm[i]=tofree[target[i]];
             int solvedscrmcode=comboCode(solvedscrm);
             fronts.add(new int[] {solvedscrmcode});
             data[solvedscrmcode]=0;
@@ -243,14 +237,30 @@ public class LoopoverBFS {
         }
         return out;
     }
-    public int codeAfterScramble(int[] scrm0, int[] scrm1) {
-        //A[i]=tofree[scrm0[scrm1[pcstosolve[i]]]]
+    public int codeAfterScramble(int[] scrm0) {
+        //A[i]=tofree[scrm0[scrm1[target[i]]]]
         int[] P=new int[F];
         for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
         for (int i=F-1, pow=1; i>=F-K; i--) {
-            int j=L[tofree[scrm0[scrm1[pcstosolve[i-(F-K)]]]]];
+            int j=L[tofree[scrm0[target[i-(F-K)]]]];
+            int pi=P[i];
+            P[j]=pi;
+            L[pi]=j;
+            out+=pow*j;
+            pow*=i+1;
+        }
+        return out;
+    }
+    public int codeAfterScramble(int[] scrm0, int[] scrm1) {
+        //A[i]=tofree[scrm0[scrm1[target[i]]]]
+        int[] P=new int[F];
+        for (int i=0; i<F; i++) P[i]=i;
+        int[] L=P.clone();
+        int out=0;
+        for (int i=F-1, pow=1; i>=F-K; i--) {
+            int j=L[tofree[scrm0[scrm1[target[i-(F-K)]]]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
@@ -260,28 +270,13 @@ public class LoopoverBFS {
         return out;
     }
     public int codeAfterScramble(int[] scrm0, int[] scrm1, int[] scrm2) {
-        //A[i]=tofree[scrm0[scrm1[scrm2[pcstosolve[i]]]]]
+        //A[i]=tofree[scrm0[scrm1[scrm2[target[i]]]]]
         int[] P=new int[F];
         for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
         for (int i=F-1, pow=1; i>=F-K; i--) {
-            int j=L[tofree[scrm0[scrm1[scrm2[pcstosolve[i-(F-K)]]]]]];
-            int pi=P[i];
-            P[j]=pi;
-            L[pi]=j;
-            out+=pow*j;
-            pow*=i+1;
-        }
-        return out;
-    }
-    public int codeAfterScramble(int[] scrm0, int[] scrm1, int[] scrm2, int[] scrm3) {
-        int[] P=new int[F];
-        for (int i=0; i<F; i++) P[i]=i;
-        int[] L=P.clone();
-        int out=0;
-        for (int i=F-1, pow=1; i>=F-K; i--) {
-            int j=L[tofree[scrm0[scrm1[scrm2[scrm3[pcstosolve[i-(F-K)]]]]]]];
+            int j=L[tofree[scrm0[scrm1[scrm2[target[i-(F-K)]]]]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
