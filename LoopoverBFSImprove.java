@@ -351,12 +351,12 @@ public class LoopoverBFSImprove {
     public static void main(String[] args) {
         //TODO: 5x5:0x0->3x3, 6x6:0x0->3x3
         long st=System.currentTimeMillis();
-        LoopoverBFSImprove.improve(5,5,"11111x11111","00011x00011",
-                20,
+        LoopoverBFSImprove.improve(6,6,"111111x111111","000111x000111",
+                24,
                 new String[] {
-                        "00111x00111",
-                        "00111x01011",
-                        "01011x01011",
+                        "001111x001111",
+                        "001111x010111",
+                        "010111x010111",
                 },
                 true
         );
