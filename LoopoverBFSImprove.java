@@ -1,63 +1,22 @@
-import java.math.BigInteger;
 import java.util.*;
-/**
- * given a start state S and end state E:
- *      ex. 5x5 Loopover states 11111x11111 and 00011x00011
- * along with a list of middle states M[]:
- *      ex. 00111x00111, 00111x01011, 10011x01011, etc.
- * use these midstates to find an upper bound on the God's number of transforming the starting state to the end state
- *
- * more formally, choose a threshold D
- * choose a midstate M[a] to be the "default"
- * then go through all scrambles such that naively using the two trees S-->M[a] and M[a]-->E yields a solution of >D moves
- * for each scramble:
- *      for each i!=a, try solving it with the trees S-->M[i] and M[i]-->E until a solution of <=D moves is found
- *      if a solution is not found, try applying an arbitrary sequence of prefix moves to the scramble,
- *          and then try solving it with the trees S-->M[i] and M[i]-->E (this time including i==a)
- *          repeat for all possible prefix sequences of length 1, 2, ... until a short enough solution is found
- */
-public class LoopoverBFSImprove {
-    private static int mod(int n, int k) {
-        return (n%k+k)%k;
-    }
+public class BFS2improve {
     public static String mvseqStr(List<int[]> S) {
         StringBuilder str=new StringBuilder();
         for (int[] m:S)
             str.append(" ").append(m[0]==0?"R":"C").append(m[1]).append(m[2]==1?" ":m[2]==-1?"'":("("+m[2]+")"));
-        return str.toString();
+        return str.substring(1);
     }
-    private static int[] inv(int[] P) { //inverse permutation
-        int[] Q=new int[P.length];
-        for (int i=0; i<P.length; i++) Q[P[i]]=i;
-        return Q;
-    }
-    private static int[] prod(int[] A, int[] B) { //return [ A[B[i]] for all i]
+    private static int[] prod(int[] A, int[] B) { //return [ A[B[i]] for all i ]
         int[] out=new int[B.length];
         for (int i=0; i<B.length; i++) out[i]=A[B[i]];
         return out;
     }
-    private static BigInteger perm2code(int[] A) {
-        BigInteger n=BigInteger.ZERO;
-        for (int i=0; i<A.length; i++)
-            n=n.add(new BigInteger(""+A[i]).multiply(new BigInteger(""+A.length).pow(i)));
-        return n;
-    }
-    private static int[] code2perm(BigInteger code, int N) {
-        int[] P=new int[N];
-        BigInteger h=code, nN=new BigInteger(""+N);
-        for (int i=0; i<N; i++) {
-            P[i]=h.mod(nN).intValue();
-            h=h.divide(nN);
-        }
-        return P;
-    }
     private static int[] restoringPerm(int[] P, int[] T) {
-        //returns Q s.t. prod(P,Q)==T, null if no such Q exists
+        //returns permutation Q s.t. prod(P,Q)==T, null if no such Q exists
         Map<Integer,Integer> locs=new HashMap<>();
         for (int i=0; i<P.length; i++)
             locs.put(P[i],i);
         if (locs.size()!=P.length) throw new RuntimeException();
-        //System.out.println(locs);
         int[] Q=new int[T.length];
         for (int i=0; i<T.length; i++)
             if (!locs.containsKey(T[i])) return null;
@@ -66,6 +25,7 @@ public class LoopoverBFSImprove {
     }
     private static List<int[]> safeTransformations(int R, int C, List<int[]> ptSets) {
         List<int[]> out=new ArrayList<>();
+        System.out.print("\nlist of safe transformations preserving"); for (int[] s:ptSets) System.out.print(" "+Arrays.toString(s)); System.out.println(":");
         for (int di=0; di<R*C; di++) for (int r0=0; r0<2; r0++) for (int r1=0; r1<2; r1++) for (int r2=0; r2<2; r2++) {
             int[] S=new int[R*C];
             for (int r=0; r<R; r++) for (int c=0; c<C; c++) {
@@ -82,284 +42,282 @@ public class LoopoverBFSImprove {
                 good=false;
                 break;
             }
-            if (good)
+            if (good) {
                 out.add(S);
-        }
-        return out;
-    }
-    private static int[] distinctScrambles(int R, int C, LoopoverBFS bfs0, int d0, LoopoverBFS bfs1) {
-        List<int[]> transformations=safeTransformations(R,C,Arrays.asList(bfs0.target,bfs1.target));
-        List<Integer> codes=new ArrayList<>();
-        boolean[] seen=new boolean[bfs0.ncombos];
-        int[] codes0=bfs0.codesAtDepth(d0); Arrays.sort(codes0);
-        for (int c0:codes0) if (!seen[c0]) {
-            codes.add(c0);
-            seen[c0]=true;
-            int[] Pf=bfs0.codeCombo(c0), P=prod(bfs0.freeto(),Pf);
-            for (int[] S:transformations) {
-                int[] tP=prod(inv(S),prod(P,restoringPerm(prod(inv(S),bfs0.target),bfs0.target)));
-                int[] tPf=prod(bfs0.tofree(),tP);
-                for (int i:tPf) if (i<0) throw new RuntimeException();
-                int nc0=bfs0.comboCode(tPf);
-                if (bfs0.depth(nc0)!=d0) throw new RuntimeException();
-                seen[nc0]=true;
+                System.out.printf("translate (%d,%d); %s%s%s%n",
+                        di/C,di%C,
+                        r0==1?"flip row coord; ":"",
+                        r1==1?"flip clm coord; ":"",
+                        r2==1?"transpose":"");
             }
         }
-        int[] out=new int[codes.size()];
-        for (int i=0; i<out.length; i++) out[i]=codes.get(i);
         return out;
     }
-    /*private static void checkSolution(int R, int C, int[] target, int[] oscrmAction, List<List<int[]>> seqs, int threshold) {
-        if (seqs.size()>threshold) throw new RuntimeException("Too many moves in alternate solution.");
-        int[] ret=prod(oscrmAction,target);
-        for (List<int[]> seq:seqs)
+    private static void printScrm(int R, int C, int[] scrm) {
+        int[] board=new int[R*C]; Arrays.fill(board,-1);
+        for (int i=0; i<R*C; i++) if (scrm[i]!=-1) board[scrm[i]]=i;
+        for (int r=0; r<R; r++) {
+            for (int c=0; c<C; c++) {
+                int v=board[r*C+c];
+                if (R*C<=26) System.out.print(v==-1?".":(char)(v+'A'));
+                else System.out.printf("%3s",v==-1?".":v);
+            }
+            System.out.println();
+        }
+    }
+    /*private static int mod(int n, int k) {
+        return (n%k+k)%k;
+    }
+    private static void checkSolution(int R, int C, int threshold, int[] oscrm, List<List<int[]>> seqs) {
+        int mvcnt=0; for (List<int[]> seq:seqs) mvcnt+=seq.size();
+        if (mvcnt>threshold) throw new RuntimeException("Too many moves in alternate solution.");
+        int N=R*C;
+        int[] scrm=oscrm;
+        List<int[]> scrms=new ArrayList<>();
+        scrms.add(Arrays.copyOf(scrm,N));
+        for (List<int[]> seq:seqs) {
             for (int[] mv:seq) {
                 int mcoord=mv[1], s=mv[2];
-                int[] nscrm=new int[ret.length];
-                for (int i=0; i<ret.length; i++)
-                    if (ret[i]==-1) nscrm[i]=-1;
+                int[] nscrm=new int[N];
+                for (int i=0; i<N; i++)
+                    if (scrm[i]==-1) nscrm[i]=-1;
                     else {
-                        int r=ret[i]/C, c=ret[i]%C;
+                        int r=scrm[i]/C, c=scrm[i]%C;
                         nscrm[i]=mv[0]==0?(r*C+(r==mcoord?mod(c+s,C):c)):
                                 ((c==mcoord?mod(r+s,R):r)*C+c);
                     }
-                ret=nscrm;
+                scrm=nscrm;
             }
-        if (!Arrays.toString(ret).equals(Arrays.toString(target))) {
+            scrms.add(Arrays.copyOf(scrm,R*C));
+        }
+        boolean solved=true;
+        for (int i=0; i<N&&solved; i++) if (scrm[i]!=-1&&scrm[i]!=i) solved=false;
+        if (!solved) {
             System.out.println("INVALID ALTERNATE SOLUTION");
             System.out.println("seqs=");
-            for (List<int[]> tmp:seqs)
-                System.out.println(mvseqStr(tmp));
-            System.out.println("final result="+Arrays.toString(ret)+"!="+Arrays.toString(target));
+            for (List<int[]> tmp:seqs) System.out.println(mvseqStr(tmp));
+            for (int i=0; i<scrms.size(); i++) {
+                if (i>0) System.out.println("-->");
+                printScrm(R,C,scrms.get(i));
+            }
             throw new RuntimeException("Invalid alternate solution");
         }
     }*/
-    private static void improve(int R, int C, String ststate, String enstate, int threshold, String[] midstates, boolean computeAllscrms) {
-        System.out.println(R+"x"+C+": "+ststate+" --> ... --> "+enstate+
-                "\nthreshold="+threshold+", midstates="+Arrays.toString(midstates));
-        //moves for prefix move sequence generation
-        int M=0;
-        for (int c=0; c<ststate.length(); c++)
-            if (ststate.charAt(c)=='1') M+=2;
-        BigInteger nM=new BigInteger(""+M);
-        int[][] mvs, mvactions, mvreduc;
-        boolean[][] rcfree0=LoopoverBFS.parseState(ststate);
-        mvs=new int[M][]; mvactions=new int[M][]; {
-            int idx=0;
-            for (int mr=0; mr<R; mr++)
-                if (rcfree0[0][mr])
-                    for (int s=-1; s<=1; s+=2) {
-                        mvs[idx]=new int[] {0,mr,s};
-                        mvactions[idx]=new int[R*C];
-                        for (int r=0; r<R; r++)
-                            for (int c=0; c<C; c++)
-                                mvactions[idx][r*C+c]=r*C+(r==mr?mod(c+s,C):c);
-                        idx++;
-                    }
-            for (int mc=0; mc<C; mc++)
-                if (rcfree0[1][mc])
-                    for (int s=-1; s<=1; s+=2) {
-                        mvs[idx]=new int[] {1,mc,s};
-                        mvactions[idx]=new int[R*C];
-                        for (int r=0; r<R; r++)
-                            for (int c=0; c<C; c++)
-                                mvactions[idx][r*C+c]=(c==mc?mod(r+s,R):r)*C+c;
-                        idx++;
-                    }
-        }
-        Map<String,int[]> mv2action=new HashMap<>(), action2mv=new HashMap<>();
-        for (int mi=0; mi<M; mi++) {
-            mv2action.put(Arrays.toString(mvs[mi]),mvactions[mi]);
-            action2mv.put(Arrays.toString(mvactions[mi]),mvs[mi]);
-        }
-        mvreduc=LoopoverBFS.mvreduc(mvs);
-
-        //prefix move sequence BFS
-        List<List<BigInteger>> fronts=new ArrayList<>();
-        {
-            int[] id=new int[R*C]; for (int i=0; i<R*C; i++) id[i]=i;
-            fronts.add(new ArrayList<>(Arrays.asList(perm2code(id))));
-        }
-        Map<BigInteger,BigInteger> data=new HashMap<>();
-        //data.get(code)=(code of parent scramble)*M+(id of previous move)
-        data.put(fronts.get(0).get(0),new BigInteger("-2"));
-
-        //preparing two-phase BFS trees
-        int A=midstates.length;
-        long timest=System.currentTimeMillis();
-        LoopoverBFS[][] trees=new LoopoverBFS[A][2];
-        for (int a=0; a<A; a++) {
-            trees[a][0]=new LoopoverBFS(R,C,ststate,midstates[a]);
-            trees[a][1]=new LoopoverBFS(R,C,midstates[a],enstate);
-            if (computeAllscrms)
-                trees[a][0].computeAllActions();
-        }
-        System.out.println("total tree preprocessing time="+(System.currentTimeMillis()-timest));
-
-        //decide which midstate minimizes the total # of scrambles we must process
-        int bestidx=0;
-        long bscr=Long.MAX_VALUE;
-        for (int a=0; a<A; a++) {
-            LoopoverBFS bfs0=trees[a][0], bfs1=trees[a][1];
-            long scr=0;
-            for (int d0=0; d0<trees[a][0].D; d0++) {
-                int[] codes0=distinctScrambles(R,C,bfs0,d0,bfs1);
-                for (int d1=0; d1<trees[a][1].D; d1++)
-                    if (d0+d1>threshold)
-                        scr+=codes0.length*(long)bfs1.codesAtDepth(d1).length;
-            }
-            System.out.println(midstates[a]+":"+scr);
-            if (scr<bscr) {
-                bscr=scr;
-                bestidx=a;
+    private int R, C, threshold;
+    private BFS t0, t1;
+    private int[] preblock;
+    private int[] scrm(int[] scrm0, int[] scrm1) {
+        int[] scrm=new int[R*C]; Arrays.fill(scrm,-1);
+        for (int i:preblock) scrm[i]=i;
+        for (int i=0; i<t0.T; i++) scrm[t0.target[i]]=scrm0[i];
+        for (int i=0; i<t1.T; i++) scrm[t1.target[i]]=scrm1[i];
+        return scrm;
+    }
+    private List<int[]> safeTransforms;
+    private int[] distinctScrm0s(int d0) {
+        int[] out=new int[t0.fronts.get(d0).length];
+        int sz=0;
+        boolean[] seen=new boolean[t0.ncombos];
+        for (int code0:t0.fronts.get(d0)) if (!seen[code0]) {
+            out[sz++]=code0;
+            for (int[] S:safeTransforms) {
+                int[] scrm0=prod(t0.freeto,t0.decode(code0));
+                int[] Q0=restoringPerm(prod(S,t0.target),t0.target);
+                scrm0=prod(prod(S,scrm0),Q0);
+                int[] fscrm0=prod(t0.tofree,scrm0);
+                for (int v:fscrm0) if (v<0) throw new RuntimeException();
+                int ncode0=t0.encode(fscrm0);
+                if (t0.depth(ncode0)!=d0) throw new RuntimeException();
+                seen[ncode0]=true;
             }
         }
-        for (int a=0; a<A; a++) if (a!=bestidx) {
-            trees[a][0].clearFronts();
-            trees[a][1].clearFronts();
+        return Arrays.copyOf(out,sz);
+    }
+    //individual dfs
+    private static class DFS {
+        private int R, C;
+        private BFS pt0, pt1;
+        private int[][] t0absmvactions;
+        private int[] preblock;
+        public DFS(BFS t0, BFS t1) {
+            pt0=t0; pt1=t1;
+            R=pt0.R; C=pt0.C;
+            t0absmvactions=new int[t0.M][];
+            for (int m=0; m<t0.M; m++) t0absmvactions[m]=t0.toabsaction(t0.mvactions[m]);
+            preblock=new int[R*C]; {
+                int K=0;
+                for (int r=0; r<R; r++) for (int c=0; c<C; c++) if (!t0.Rf[r]&&!t0.Cf[c]) preblock[K++]=r*C+c;
+                preblock=Arrays.copyOf(preblock,K);
+            }
+            pcode0aftermv=new int[pt0.ncombos][pt0.M];
+            for (int code0=0; code0<pt0.ncombos; code0++) {
+                for (int mi=0; mi<pt0.M; mi++)
+                    pcode0aftermv[code0][mi]=pt0.encode(pt0.decode(code0),pt0.mvactions[mi]);
+            }
         }
-        System.out.println("main midstate="+midstates[bestidx]);
-        LoopoverBFS tree0=trees[bestidx][0], tree1=trees[bestidx][1];
-        System.out.printf("total combos to improve=%,d%n",bscr);
+        private boolean finished;
+        private int threshold;
+        private int phase0lim;
+        private long attempts, nodeVisits;
+        private int[][] pcode0aftermv;
+        /*private int[] oscrm;
+        private List<int[]> p0mvlist;*/
+        private void dfs(int code0, int[] part1, int mvs, int prevmi) {
+            nodeVisits++;
+            if (finished) return;
+            if (pt0.depth(code0)==0) {
+                attempts++;
+                if (mvs+pt1.depth(pt1.encode(part1,pt1.tofree))<=threshold) {
+                    finished=true;
+                    //checkSolution(R,C,threshold,oscrm,Arrays.asList(p0mvlist,pt1.solvemvs(pt1.encode(part1,pt1.tofree))));
+                    return;
+                }
+            }
+            for (int mi:pt0.mvreduc[prevmi]) if (!finished) {
+                int ncode0=pcode0aftermv[code0][mi];
+                if (mvs+1+pt0.depth(ncode0)<=phase0lim) {
+                    //p0mvlist.add(pt0.mvs[mi]);
+                    dfs(ncode0,prod(t0absmvactions[mi],part1),mvs+1,mi);
+                    //p0mvlist.remove(p0mvlist.size()-1);
+                }
+            }
+        }
+        private boolean solveable(int[] scrm, int threshold, int phase0lim) {
+            this.threshold=threshold; this.phase0lim=phase0lim;
+            finished=false;
+            //oscrm=scrm; p0mvlist=new ArrayList<>();
+            attempts=0; nodeVisits=0;
+            dfs(pt0.encode(prod(scrm,pt0.target),pt0.tofree),prod(scrm,pt1.target),0,pt0.M);
+            return finished;
+        }
+    }
+    //aggregate dfs
+    /*private int[] oscrm0;
+    private List<int[]> t0mvilist;*/
+    private int[] t0depth, t1depth;
+    private int[][] t0absmvactions, code0aftermv;
+    private int phase0lim;
+    private int[][] scrm1stosolve;
+    private boolean finished;
+    private long nodeVisits, attempts;
+    private void aggregate_dfs(int code0, int[] netact, int mvs, int prevmi) {
+        nodeVisits++;
+        if (finished) return;
+        if (t0depth[code0]==0) {
+            int[][] rem=new int[scrm1stosolve.length][];
+            int sz=0;
+            for (int[] scrm1:scrm1stosolve) {
+                attempts++;
+                if (mvs+t1depth[t1.encode(prod(netact,scrm1),t1.tofree)]>threshold) rem[sz++]=scrm1;
+                //else checkSolution(R,C,threshold,scrm(oscrm0,scrm1),Arrays.asList(t0mvilist,t1.solvemvs(t1.encode(prod(t1.tofree,prod(netact,scrm1))))));
+            }
+            scrm1stosolve=Arrays.copyOf(rem,sz);
+            if (sz==0) {
+                finished=true;
+                return;
+            }
+        }
+        for (int mi:t0.mvreduc[prevmi]) if (!finished) {
+            int ncode0=code0aftermv[code0][mi];
+            if (mvs+1+t0depth[ncode0]<=phase0lim) {
+                //t0mvilist.add(t0.mvs[mi]);
+                aggregate_dfs(ncode0,prod(t0absmvactions[mi],netact),mvs+1,mi);
+                //t0mvilist.remove(t0mvilist.size()-1);å
+            }
+        }
+    }
+    private void improve(String S0, String S1, String S2, int thresh, String[] altS1s) {
+        t0=new BFS(S0,S1); t1=new BFS(S1,S2);
+        R=t0.R; C=t0.C;
+        threshold=thresh;
+        DFS[] altDFSs=new DFS[altS1s.length];
+        for (int a=0; a<altS1s.length; a++)
+            altDFSs[a]=new DFS(new BFS(S0,altS1s[a]),new BFS(altS1s[a],S2));
+        preblock=new int[R*C]; {
+            int K=0;
+            for (int r=0; r<R; r++) for (int c=0; c<C; c++) if (!t0.Rf[r]&&!t0.Cf[c]) preblock[K++]=r*C+c;
+            preblock=Arrays.copyOf(preblock,K);
+        }
+        safeTransforms=safeTransformations(R,C,Arrays.asList(preblock,t0.target,t1.target));
+        t0absmvactions=new int[t0.M][];
+        for (int m=0; m<t0.M; m++) t0absmvactions[m]=t0.toabsaction(t0.mvactions[m]);
+        int[][] distinct0s=new int[t0.diam+1][];
+        System.out.println("\nreduced phase 0 scrambles depth distribution:");
+        for (int d0=0; d0<=t0.diam; d0++) {
+            distinct0s[d0]=distinctScrm0s(d0);
+            System.out.print((d0>0?" ":"")+d0+":"+distinct0s[d0].length);
+        }
+        System.out.println();
+        long amt=0;
+        for (int d0=0; d0<=t0.diam; d0++) for (int d1=0; d1<=t1.diam; d1++) if (d0+d1>threshold)
+            amt+=distinct0s[d0].length*(long)t1.fronts.get(d1).length;
+        System.out.println("\n# scrambles to improve="+amt);
+        t0depth=new int[t0.ncombos];
+        code0aftermv=new int[t0.ncombos][t0.M];
+        for (int code0=0; code0<t0.ncombos; code0++) {
+            t0depth[code0]=t0.depth(code0);
+            for (int mi=0; mi<t0.M; mi++)
+                code0aftermv[code0][mi]=t0.encode(t0.decode(code0),t0.mvactions[mi]);
+        }
+        t1depth=new int[t1.ncombos];
+        for (int code1=0; code1<t1.ncombos; code1++) t1depth[code1]=t1.depth(code1);
+        for (int d0=0; d0<=t0.diam; d0++) for (int d1=0; d1<=t1.diam; d1++) if (d0+d1>threshold) {
+            System.out.println("depths "+d0+","+d1+" ("+distinct0s[d0].length*(long)t1.fronts.get(d1).length+" tot scrambles)");
+            long cnt=0, cnt0=0, st=System.currentTimeMillis(), mark=st;
+            nodeVisits=0; attempts=0;
+            String form="%12s%24s%24s%24s%24s%24s%24s%n";
+            System.out.printf(form,"time (ms)","scrms","^(-1) * attempts","=","phase 0 scrms","^(-1) * dfs node visits","=");
 
-        //start improvement
-        int[] target=new int[tree0.K+tree1.K];
-        System.arraycopy(tree0.target,0,target,0,tree0.K);
-        System.arraycopy(tree1.target,0,target,tree0.K,tree1.K);
-        List<int[]> symmetries=safeTransformations(R,C,Arrays.asList(target)), restorings=new ArrayList<>();
-        for (int[] S:symmetries)
-            restorings.add(restoringPerm(prod(S,target),target));
-        timest=System.currentTimeMillis();
-        long ntrials=0, ntries=0, maxtries=0;
-        for (int d0=0; d0<tree0.D; d0++) {
-            int[] bin0=distinctScrambles(R,C,tree0,d0,tree1);
-            for (int d1=0; d1<tree1.D; d1++) if (d0+d1>threshold) {
-                int[] bin1=tree1.codesAtDepth(d1);
-                long st=System.currentTimeMillis();
-                int[][] scrms0=new int[bin0.length][], scrms1=new int[bin1.length][];
-                for (int idx0=0; idx0<bin0.length; idx0++)
-                    scrms0[idx0]=tree0.scrambleaction(bin0[idx0]);
-                for (int idx1=0; idx1<bin1.length; idx1++)
-                    scrms1[idx1]=tree1.scrambleaction(bin1[idx1]);
-                System.out.println("memoizing scramble actions: "+(System.currentTimeMillis()-st)+" ms");
-                System.out.println(d0+","+d1+": ncombos="+String.format("%,d",bin0.length*(long)bin1.length));
-                long stage=1, mark0=10_000, mark=mark0;
-                String form="%12s%20s%n";
-                System.out.printf(form,"elapsed ms","#combos");
-                long reps=0;
-                st=System.currentTimeMillis();
-                for (int idx0=0; idx0<bin0.length; idx0++)
-                    for (int idx1=0; idx1<bin1.length; idx1++) {
-                        int[] oscrmAction=prod(scrms0[idx0],scrms1[idx1]);
-                        //a piece in location i is moved to location oscrmAction[i]
-                        //abbreviate oscrmAction as P and target as T
-                        //if there exists A s.t. APT=T,
-                        //then, letting B=SA*inv(S) for some S s.t. STQ=T for some Q,
-                        //B*(SPTQ)=T
-                        //let B=SA*inv(S) --> A=inv(S)*BS
-                        //def invT(A)=C s.t. C[T[i]]=A[i] for all i, and all other elems of C are -1
-                        //then invT(A)*T=A --> SPTQ=invT(SPTQ)*T
-                        boolean reduced=false;
-                        ntrials++;
-                        long ntries0=ntries;
-                        ALTSOL: for (int a=0; a<A; a++) for (int si=(a==bestidx?1:0); si<symmetries.size(); si++) {
-                            ntries++;
-                            int[] S=symmetries.get(si), tmp=prod(S,prod(prod(oscrmAction,target),restorings.get(si)));
-                            int[] scrm=new int[R*C]; Arrays.fill(scrm,-1);
-                            for (int ti=0; ti<tmp.length; ti++)
-                                scrm[target[ti]]=tmp[ti];
-                            int code0=trees[a][0].codeAfterScramble(scrm);
-                            int[] action0=trees[a][0].solveaction(code0);
-                            int code1=trees[a][1].codeAfterScramble(action0,scrm);
-                            if (trees[a][0].depth(code0)+trees[a][1].depth(code1)<=threshold) {
-                                reduced=true;
-                                /*List<List<int[]>> seqs=new ArrayList<>(Arrays.asList(trees[a][0].solvemvs(code0),
-                                        trees[a][1].solvemvs(code1)));
-                                for (List<int[]> seq:seqs)
-                                    for (int i=0; i<seq.size(); i++)
-                                        seq.set(i,action2mv.get(Arrays.toString(
-                                                prod(inv(S),prod(mv2action.get(Arrays.toString(seq.get(i))),S))
-                                        )));
-                                checkSolution(R,C,target,oscrmAction,seqs,threshold);*/
-                                break ALTSOL;
-                            }
+            int N1=t1.fronts.get(d1).length;
+            int[][] t1locs=new int[N1][];
+            for (int i=0; i<N1; i++) t1locs[i]=prod(t1.freeto,t1.decode(t1.fronts.get(d1)[i]));
+            for (int code0:distinct0s[d0]) {
+                int[] t0scrmact=t0.scrmaction(code0);
+                scrm1stosolve=new int[N1][];
+                for (int i=0; i<N1; i++) scrm1stosolve[i]=prod(t0scrmact,t1locs[i]);
+                finished=false;
+                //oscrm0=prod(t0.freeto,t0.decode(code0)); t0mvilist=new ArrayList<>();
+                int[] scrm0=prod(t0.freeto,t0.decode(code0));
+                int[] I=new int[R*C]; for (int i=0; i<R*C; i++) I[i]=i;
+                for (phase0lim=d0; !finished&&phase0lim<=threshold; phase0lim++) {
+                    aggregate_dfs(code0,I,0,t0.M);
+                    int[][] rem=new int[scrm1stosolve.length][];
+                    int sz=0;
+                    for (int[] scrm1:scrm1stosolve) {
+                        boolean solved=false;
+                        for (DFS dfs:altDFSs) {
+                            solved=dfs.solveable(scrm(scrm0,scrm1),threshold,phase0lim);
+                            attempts+=dfs.attempts;
+                            nodeVisits+=dfs.nodeVisits;
+                            if (solved) break;
                         }
-                        if (!reduced)
-                            PREFIXANDALTBLOCK:
-                                    for (int depth=1;; depth++) {
-                                        if (fronts.size()==depth) {
-                                            fronts.add(new ArrayList<>());
-                                            for (BigInteger f:fronts.get(depth-1)) {
-                                                int[] action=code2perm(f,R*C);
-                                                int[] mvlist=mvreduc[data.get(f).compareTo(BigInteger.ZERO)<0?M:
-                                                        data.get(f).mod(nM).intValue()];
-                                                for (int mi:mvlist) {
-                                                    BigInteger nf=perm2code(prod(mvactions[mi],action));
-                                                    if (!data.containsKey(nf)) {
-                                                        data.put(nf,f.multiply(nM).add(BigInteger.valueOf(mi)));
-                                                        fronts.get(depth).add(nf);
-                                                    }
-                                                }
-                                            }
-                                            System.out.println("max depth-->"+depth+" (#scrambles="+fronts.get(depth).size()+")");
-                                        }
-                                        for (BigInteger f:fronts.get(depth)) {
-                                            int[] prefixaction=code2perm(f,R*C);
-                                            for (int a=0; a<A; a++) for (int si=0; si<symmetries.size(); si++) {
-                                                ntries++;
-                                                int[] S=symmetries.get(si), tmp=prod(S,prod(prod(oscrmAction,target),restorings.get(si)));
-                                                int[] scrm=new int[R*C]; Arrays.fill(scrm,-1);
-                                                for (int ti=0; ti<tmp.length; ti++)
-                                                    scrm[target[ti]]=tmp[ti];
-                                                int code0=trees[a][0].codeAfterScramble(prefixaction,scrm);
-                                                int code1=trees[a][1].codeAfterScramble(trees[a][0].solveaction(code0),prefixaction,scrm);
-                                                if (depth+trees[a][0].depth(code0)+trees[a][1].depth(code1)<=threshold) {
-                                                    /*List<List<int[]>> seqs=new ArrayList<>();
-                                                    seqs.add(new ArrayList<>());
-                                                    for (BigInteger code=f; data.get(code).compareTo(BigInteger.ZERO)>=0;
-                                                         code=data.get(code).divide(nM))
-                                                        seqs.get(0).add(mvs[data.get(code).mod(nM).intValue()]);
-                                                    seqs.add(trees[a][0].solvemvs(code0));
-                                                    seqs.add(trees[a][1].solvemvs(code1));
-                                                    for (List<int[]> seq:seqs)
-                                                        for (int i=0; i<seq.size(); i++)
-                                                            seq.set(i,action2mv.get(Arrays.toString(
-                                                                    prod(inv(S),prod(mv2action.get(Arrays.toString(seq.get(i))),S))
-                                                            )));
-                                                    checkSolution(R,C,target,oscrmAction,seqs,threshold);*/
-                                                    break PREFIXANDALTBLOCK;
-                                                }
-                                            }
-                                        }
-                                    }
-                        maxtries=Math.max(maxtries,ntries-ntries0);
-                        reps++;
-                        long time=System.currentTimeMillis()-st;
-                        if (time>=mark) {
-                            System.out.printf(form,String.format("%,d",time),String.format("%,d",reps));
-                            stage++;
-                            mark=(long)(mark0*Math.pow(stage,2.5));
-                        }
+                        if (!solved) rem[sz++]=scrm1;
                     }
-                System.out.printf(form,String.format("%,d",System.currentTimeMillis()-st),String.format("%,d",reps));
+                    scrm1stosolve=Arrays.copyOf(rem,sz);
+                    if (sz==0) finished=true;
+                }
+                if (!finished) {
+                    System.out.println("NOT REDUCED:");
+                    for (int[] scrm1:scrm1stosolve) {
+                        printScrm(R,C,scrm(scrm0,scrm1));
+                        System.out.println();
+                    }
+                    return;
+                }
+                cnt+=t1.fronts.get(d1).length;
+                cnt0++;
+                long time=System.currentTimeMillis();
+                if (time>=mark) {
+                    if (mark>st) System.out.printf(form,time-st,cnt,attempts,String.format("%.10f",attempts/(double)cnt),cnt0, nodeVisits,String.format("%.10f", nodeVisits /(double)cnt0));
+                    mark+=100_000;
+                }
             }
+            if (mark>st) System.out.printf(form,System.currentTimeMillis()-st,cnt,attempts,String.format("%.10f",attempts/(double)cnt),cnt0, nodeVisits,String.format("%.10f", nodeVisits /(double)cnt0));
         }
-        System.out.println("improvement time="+(System.currentTimeMillis()-timest));
-        System.out.println("mean # alternate attempted solutions per scramble="+ntries+"/"+ntrials+"="+(ntries/(double)ntrials));
-        System.out.println("maximum # attempts on a scramble="+maxtries);
     }
     public static void main(String[] args) {
-        //TODO: 5x5:0x0->3x3, 6x6:0x0->3x3
         long st=System.currentTimeMillis();
-        LoopoverBFSImprove.improve(6,6,"111111x111111","000111x000111",
-                24,
-                new String[] {
-                        "001111x001111",
-                        "001111x010111",
-                        "010111x010111",
-                },
-                true
-        );
+        new BFS2improve().improve("000011x000011","000001x000011","000001x000001",25,new String[] {"000011x000001"});
         System.out.println("total program time="+(System.currentTimeMillis()-st));
     }
 }
