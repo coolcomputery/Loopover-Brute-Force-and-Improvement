@@ -1,8 +1,13 @@
 import java.util.*;
-public class LoopoverBFS {
-    //TODO: REFACTOR USING ABSTRACT CLASS
+public class BFS {
     private static int mod(int n, int k) {
         return (n%k+k)%k;
+    }
+    public static String mvseqStr(List<int[]> S) {
+        StringBuilder str=new StringBuilder();
+        for (int[] m:S)
+            str.append(" ").append(m[0]==0?"R":"C").append(m[1]).append(m[2]==1?" ":m[2]==-1?"'":("("+m[2]+")"));
+        return str.substring(1);
     }
     private static boolean[] mask(String s) {
         boolean[] out=new boolean[s.length()];
@@ -15,56 +20,36 @@ public class LoopoverBFS {
         if (pcs.length!=2) throw new RuntimeException("Not in 2 pieces: "+s);
         return new boolean[][] {mask(pcs[0]),mask(pcs[1])};
     }
-    private static boolean free(boolean[][] boardState, int r, int c) {
-        return boardState[0][r]||boardState[1][c];
+    private static int[] prod(int[] A, int[] B) { //return [ A[B[i]] for all i ]
+        int[] out=new int[B.length];
+        for (int i=0; i<B.length; i++) out[i]=A[B[i]];
+        return out;
     }
     //define absolute indexing as mapping coordinate (r,c) to index r*C+c
     //every scramble is represented by an array L[], where piece i is at location L[i]
-    private int R, C;
+    public int R, C;
     private int F;
-    private boolean[][] rcfree;
-    //a location (r,c) is free iff Rfree[r]||Cfree[c]
-    private int[] tofree, freeto;
-    //tofree[r*C+c]=i, where free location (r,c) is assigned to index i
-    public int K;
+    public boolean[] Rf, Cf;
+    //cell (r,c) is free iff Rf[r]||Cf[c]
+    public int[] tofree, freeto;
+    //tofree[r*C+c]=i, where (r,c) is the i-th free cell
+    //  i.e. i is the "free coordinate" of (r,c)
+    //the "absolute coordinate" of cell (r,c) is rC+c
+    public int T;
     public int[] target; //list of pieces this tree tries to solve, in absolute indexing
-    private int[][] mvactions, mvs;
-    private int[][] solveactions, scrambleactions;
-    public static int[][] mvreduc(int[][] mvs) {
-        int M=mvs.length;
-        //move sequence reduction
-        //when doing two moves of the same type, one after the other: [t,a,r], [t,b,s]:
-        //WLOG a<=b, or else the two moves can be arranged to satisfy this condition without changing the final scramble
-        //if a==b, then r+s!=0, else the two moves cancel each other out
-        int[][] mvreduc=new int[M+1][];
-        for (int m=0; m<M; m++) {
-            List<Integer> l=new ArrayList<>();
-            for (int m2=0; m2<M; m2++)
-                if (mvs[m][0]!=mvs[m2][0]
-                        ||mvs[m][1]<mvs[m2][1]
-                        ||(mvs[m][1]==mvs[m2][1]&&mvs[m][2]+mvs[m2][2]!=0))
-                    l.add(m2);
-            mvreduc[m]=new int[l.size()];
-            for (int i=0; i<l.size(); i++)
-                mvreduc[m][i]=l.get(i);
-        }
-        mvreduc[M]=new int[M];
-        for (int i=0; i<M; i++) mvreduc[M][i]=i;
-        return mvreduc;
+    public int M;
+    public int[][] mvactions, mvs, mvreduc;
+    private boolean mvokay(int mai, int mbi) {
+        int[] mva=mvs[mai], mvb=mvs[mbi];
+        return mva[0]!=mvb[0]||mva[1]<mvb[1]
+                ||(mva[1]==mvb[1]&&mva[2]+mvb[2]!=0);
     }
-    private int M;
     public int ncombos;
     //bfs stuff
     private long[] data;
-    private List<int[]> fronts; //BFS fronts
-    public int D; //(largest depth of BFS tree)+1
+    public List<int[]> fronts; //BFS fronts
+    public int diam; //depth of BFS tree
     //c-->(depth,move from parent combo to c,parent combo)
-    public int[] tofree() {
-        return tofree;
-    }
-    public int[] freeto() {
-        return freeto;
-    }
     private long compressed(int depth, int parent, int move) {
         return ((long)depth*M+move)*ncombos+parent;
     }
@@ -77,33 +62,26 @@ public class LoopoverBFS {
     private int mvi(int code) {
         return data[code]==-1?-1:(int)((data[code]/ncombos)%M);
     }
-    public LoopoverBFS(int R, int C, String state0, String state1) {
-        long st=System.currentTimeMillis();
-        this.R=R; this.C=C;
-        rcfree=parseState(state0);
-        tofree=new int[R*C]; freeto=new int[R*C];
-        F=0;
-        for (int r=0; r<R; r++)
-            for (int c=0; c<C; c++)
-                if (free(rcfree,r,c)) {
-                    tofree[r*C+c]=F;
-                    freeto[F]=r*C+c;
-                    F++;
-                }
-                else tofree[r*C+c]=-1;
-        freeto=Arrays.copyOfRange(freeto,0, F);
-        boolean[][] nrcfree=parseState(state1);
-        K=0; target =new int[R*C];
-        for (int r=0; r<R; r++)
-            for (int c=0; c<C; c++)
-                if (free(rcfree,r,c)&&!free(nrcfree,r,c))
-                    target[K++]=r*C+c;
-        target =Arrays.copyOfRange(target,0,K);
+    public BFS(String state0, String state1) {
+        boolean[][] S0=parseState(state0), S1=parseState(state1);
+        Rf=S0[0]; Cf=S0[1];
+        R=Rf.length; C=Cf.length;
+        if (S1[0].length!=R||S1[1].length!=C) throw new RuntimeException("Mismatching dimensions for start and end state: "+state0+"-->"+state1);
+        F=0; freeto=new int[R*C]; tofree=new int[R*C]; Arrays.fill(tofree,-1);
+        T=0; target=new int[R*C];
+        for (int r=0; r<R; r++) for (int c=0; c<C; c++) if (Rf[r]||Cf[c]) {
+            int l=r*C+c;
+            tofree[l]=F; freeto[F]=l;
+            if (!S1[0][r]&&!S1[1][c]) target[T++]=l;
+            F++;
+        }
+        freeto=Arrays.copyOf(freeto,F); target=Arrays.copyOf(target,T);
+        //for (int[] a:new int[][] {freeto,tofree,target}) System.out.println(Arrays.toString(a));
         for (int r=0; r<R; r++) {
             for (int c=0; c<C; c++)
                 System.out.printf("%4s",
-                        free(rcfree,r,c)?
-                                ((free(nrcfree,r,c)?"":"'")+tofree[r*C+c]):
+                        Rf[r]||Cf[c]?
+                                ((S1[0][r]||S1[1][c]?"":"'")+tofree[r*C+c]):
                                 "X"
                         //': piece that this BFS tree tries to solve; *: gripped piece
                 );
@@ -111,7 +89,7 @@ public class LoopoverBFS {
         }
         {
             long tmp=1;
-            for (int rep=0; rep<K; rep++) tmp*=F-rep;
+            for (int rep=0; rep<T; rep++) tmp*=F-rep;
             if (tmp>400_000_000) throw new RuntimeException("Too many combinations to handle.");
             ncombos=(int)tmp;
         }
@@ -121,79 +99,76 @@ public class LoopoverBFS {
         //t: type (0=row shift, 1=clm shift)
         //a: the a-th (row if t==0, else clm)
         //r: # units to shift (right if t==0, else down)
-        M=0;
-        for (boolean[] axis:rcfree)
-            for (boolean b:axis) if (b) M+=2;
-        mvactions=new int[M][]; mvs=new int[M][]; {
-            //mvactions[m][i]=free loc. that i-th free loc. will go to after move m is applied
-            int idx=0;
-            for (int mr=0; mr<R; mr++)
-                if (rcfree[0][mr])
-                    for (int s=-1; s<=1; s+=2) {
-                        mvs[idx]=new int[] {0,mr,s};
-                        mvactions[idx]=new int[F];
-                        for (int i=0; i<F; i++) {
-                            int r=freeto[i]/C, c=freeto[i]%C;
-                            mvactions[idx][i]=tofree[r*C+(r==mr?mod(c+s,C):c)];
-                        }
-                        idx++;
+        mvs=new int[2*R*C][]; mvactions=new int[2*R*C][]; {
+            M=0;
+            for (int mr=0; mr<R; mr++) if (Rf[mr])
+                for (int s=-1; s<=1; s+=2) {
+                    mvs[M]=new int[] {0,mr,s};
+                    mvactions[M]=new int[F];
+                    for (int i=0; i<F; i++) {
+                        int r=freeto[i]/C, c=freeto[i]%C;
+                        mvactions[M][i]=tofree[r*C+(r==mr?mod(c+s,C):c)];
                     }
-            for (int mc=0; mc<C; mc++)
-                if (rcfree[1][mc])
-                    for (int s=-1; s<=1; s+=2) {
-                        mvs[idx]=new int[] {1,mc,s};
-                        mvactions[idx]=new int[F];
-                        for (int i=0; i<F; i++) {
-                            int r=freeto[i]/C, c=freeto[i]%C;
-                            mvactions[idx][i]=tofree[(c==mc?mod(r+s,R):r)*C+c];
-                        }
-                        idx++;
+                    M++;
+                }
+            for (int mc=0; mc<C; mc++) if (Cf[mc])
+                for (int s=-1; s<=1; s+=2) {
+                    mvs[M]=new int[] {1,mc,s};
+                    mvactions[M]=new int[F];
+                    for (int i=0; i<F; i++) {
+                        int r=freeto[i]/C, c=freeto[i]%C;
+                        mvactions[M][i]=tofree[(c==mc?mod(r+s,R):r)*C+c];
                     }
+                    M++;
+                }
+            mvs=Arrays.copyOf(mvs,M);
+            mvactions=Arrays.copyOf(mvactions,M);
         }
-        int[][] mvreduc=mvreduc(mvs);
+        mvreduc=new int[M+1][];
+        for (int m=0; m<M; m++) {
+            mvreduc[m]=new int[M];
+            int sz=0;
+            for (int mb=0; mb<M; mb++) if (mvokay(m,mb)) mvreduc[m][sz++]=mb;
+            mvreduc[m]=Arrays.copyOf(mvreduc[m],sz);
+        }
+        mvreduc[M]=new int[M]; for (int m=0; m<M; m++) mvreduc[M][m]=m;
+        String form="%-4s%-8s%s%n"; System.out.printf(form,"idx","move","idxs of moves allowed to come afterward");
+        for (int m=0; m<=M; m++) System.out.printf(form,m,m<M?mvseqStr(Arrays.asList(mvs[m])):"-",Arrays.toString(mvreduc[m]));
         //BFS
-        solveactions=new int[ncombos][];
-        scrambleactions=new int[ncombos][];
+        long st=System.currentTimeMillis();
         data=new long[ncombos]; Arrays.fill(data,-1);
         fronts=new ArrayList<>();
         {
-            int[] solvedscrm=new int[K];
-            for (int i=0; i<K; i++)
+            int[] solvedscrm=new int[T];
+            for (int i=0; i<T; i++)
                 solvedscrm[i]=tofree[target[i]];
-            int solvedscrmcode=comboCode(solvedscrm);
+            int solvedscrmcode=encode(solvedscrm);
             fronts.add(new int[] {solvedscrmcode});
             data[solvedscrmcode]=0;
         }
         int[] nfront=new int[ncombos];
         int reached=0;
-        for (D=0;; D++) {
-            if (fronts.get(D).length==0) break;
-            reached+=fronts.get(D).length;
-            System.out.print((D>0?" ":"")+D+":"+fronts.get(D).length);
+        for (diam=0;; diam++) {
+            reached+=fronts.get(diam).length;
+            System.out.print((diam>0?" ":"")+diam+":"+fronts.get(diam).length);
             int sz=0;
-            for (int f:fronts.get(D)) {
-                int[] scrm=codeCombo(f);
-                int[] mvlist=mvreduc[D==0?M:mvi(f)];
+            for (int f:fronts.get(diam)) {
+                int[] scrm=decode(f);
+                int[] mvlist=mvreduc[diam==0?M:mvi(f)];
                 for (int mi:mvlist) {
-                    int nf=comboCode(scrm,mvactions[mi]);
+                    int nf=encode(scrm,mvactions[mi]);
                     if (data[nf]==-1) {
-                        data[nf]=compressed(D+1,f,mi);
+                        data[nf]=compressed(diam+1,f,mi);
                         nfront[sz++]=nf;
                     }
                 }
             }
-            fronts.add(new int[sz]);
-            System.arraycopy(nfront,0,fronts.get(D+1),0,sz);
+            if (sz==0) break;
+            fronts.add(Arrays.copyOf(nfront,sz));
         }
         System.out.println("\n#reached="+reached);
-        System.out.println("D="+D);
+        System.out.println("diam="+diam);
         System.out.println("total BFS time="+(System.currentTimeMillis()-st));
-    }
-    public void clearFronts() {
-        fronts=null;
-    }
-    public int[] codesAtDepth(int d) {
-        return fronts.get(d);
     }
     /*
     encoding ordered combinations
@@ -203,14 +178,14 @@ public class LoopoverBFS {
       --> encode A as J_(N-1)+N*(J_(N-2)+(N-1)*(...+(N-K+2)*J_(N-K)...)
     for this program, N=Nfree, K=K
     */
-    public int comboCode(int[] A) {
+    public int encode(int[] A) {
         int[] P=new int[F];
         for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
-        for (int i=F-1, pow=1; i>=F-K; i--) {
+        for (int i=F-1, pow=1; i>=F-T; i--) {
             //swap idxs i and L[A[i-(N-K)]] in P
-            int j=L[A[i-(F-K)]];
+            int j=L[A[i-(F-T)]];
             int pi=P[i];//, pj=P[j];
             //P[i]=pj; //<--idx i will never be touched again
             P[j]=pi;
@@ -222,13 +197,13 @@ public class LoopoverBFS {
         }
         return out;
     }
-    private int comboCode(int[] A, int[] f) {
+    public int encode(int[] A, int[] f) {
         int[] P=new int[F];
         for (int i=0; i<F; i++) P[i]=i;
         int[] L=P.clone();
         int out=0;
-        for (int i=F-1, pow=1; i>=F-K; i--) {
-            int j=L[f[A[i-(F-K)]]];
+        for (int i=F-1, pow=1; i>=F-T; i--) {
+            int j=L[f[A[i-(F-T)]]];
             int pi=P[i];
             P[j]=pi;
             L[pi]=j;
@@ -237,90 +212,32 @@ public class LoopoverBFS {
         }
         return out;
     }
-    public int codeAfterScramble(int[] scrm0) {
-        //A[i]=tofree[scrm0[scrm1[target[i]]]]
+    public int[] decode(int code) {
         int[] P=new int[F];
         for (int i=0; i<F; i++) P[i]=i;
-        int[] L=P.clone();
-        int out=0;
-        for (int i=F-1, pow=1; i>=F-K; i--) {
-            int j=L[tofree[scrm0[target[i-(F-K)]]]];
-            int pi=P[i];
-            P[j]=pi;
-            L[pi]=j;
-            out+=pow*j;
-            pow*=i+1;
-        }
-        return out;
-    }
-    public int codeAfterScramble(int[] scrm0, int[] scrm1) {
-        //A[i]=tofree[scrm0[scrm1[target[i]]]]
-        int[] P=new int[F];
-        for (int i=0; i<F; i++) P[i]=i;
-        int[] L=P.clone();
-        int out=0;
-        for (int i=F-1, pow=1; i>=F-K; i--) {
-            int j=L[tofree[scrm0[scrm1[target[i-(F-K)]]]]];
-            int pi=P[i];
-            P[j]=pi;
-            L[pi]=j;
-            out+=pow*j;
-            pow*=i+1;
-        }
-        return out;
-    }
-    public int codeAfterScramble(int[] scrm0, int[] scrm1, int[] scrm2) {
-        //A[i]=tofree[scrm0[scrm1[scrm2[target[i]]]]]
-        int[] P=new int[F];
-        for (int i=0; i<F; i++) P[i]=i;
-        int[] L=P.clone();
-        int out=0;
-        for (int i=F-1, pow=1; i>=F-K; i--) {
-            int j=L[tofree[scrm0[scrm1[scrm2[target[i-(F-K)]]]]]];
-            int pi=P[i];
-            P[j]=pi;
-            L[pi]=j;
-            out+=pow*j;
-            pow*=i+1;
-        }
-        return out;
-    }
-    public int[] codeCombo(int code) {
-        int[] P=new int[F];
-        for (int i=0; i<F; i++) P[i]=i;
-        for (int v=F; v> F-K; v--) {
+        for (int v=F; v>F-T; v--) {
             int i=v-1, j=code%v;
             code/=v;
             int pi=P[i]; P[i]=P[j]; P[j]=pi;
         }
-        int[] out=new int[K];
-        System.arraycopy(P, F-K,out,0,K);
+        int[] out=new int[T];
+        System.arraycopy(P,F-T,out,0,T);
         return out;
     }
-    public void computeAllActions() {
-        for (int code=0; code<ncombos; code++) if (data[code]!=-1) {
-            solveactions[code]=solveaction_help(code);
-            scrambleactions[code]=inv(solveactions[code]);
-        }
+    public int[] toabsaction(int[] faction) {
+        //faction[i]=j means the i-th free loc goes to the j-th free loc
+        int[] out=new int[R*C];
+        for (int l=0; l<R*C; l++)
+            out[l]=tofree[l]==-1?l:(freeto[faction[tofree[l]]]);
+        return out;
     }
-    public int[] solveaction(int code) {
-        return solveactions[code]==null?solveaction_help(code):solveactions[code];
-    }
-    private int[] solveaction_help(int code) {
+    public int[] scrmaction(int code) {
         if (data[code]==-1) throw new RuntimeException("Invalid combination code: "+code);
-        int[] out=new int[F];
-        for (int i=0; i<F; i++) out[i]=i;
-        for (int c=code; depth(c)>0; c=par(c)) {
-            int[] mva=inv(mvactions[mvi(c)]);
-            int[] nout=new int[F];
-            for (int i=0; i<F; i++)
-                nout[i]=mva[out[i]];
-            out=nout;
-        }
-        return mva2abs(out);
-    }
-    public int[] scrambleaction(int code) {
-        return scrambleactions[code]==null?inv(solveaction(code)):scrambleactions[code];
+        int[] ret=new int[F];
+        for (int i=0; i<F; i++) ret[i]=i;
+        for (int c=code; depth(c)>0; c=par(c))
+            ret=prod(ret,mvactions[mvi(c)]);
+        return toabsaction(ret);
     }
     public List<int[]> solvemvs(int code) {
         List<int[]> out=new ArrayList<>();
@@ -330,19 +247,7 @@ public class LoopoverBFS {
         }
         return out;
     }
-    private static int[] inv(int[] P) {
-        //return inverse permutation of P
-        int[] I=new int[P.length];
-        for (int i=0; i<P.length; i++)
-            I[P[i]]=i;
-        return I;
-    }
-    private int[] mva2abs(int[] mva) {
-        //convert mva to array A
-        //where A[a]=b describes absolute location a being shifted to absolute location b
-        int[] out=new int[R*C];
-        for (int a=0; a<R*C; a++)
-            out[a]=tofree[a]==-1?a:freeto[mva[tofree[a]]];
-        return out;
+    public static void main(String[] args) {
+        new BFS("00011x00011","00001x00001");
     }
 }
