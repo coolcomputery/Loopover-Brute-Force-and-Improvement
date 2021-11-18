@@ -30,7 +30,7 @@ x.x. --> x.xx
 
 Any RxC loopover can be solved by applying one or more phases onto it, progressively solving larger and larger regions of it (this is called block-building), and this gives an upper bound on the "God's number" of RxC Loopover, i.e. the fewest moves necessary to be able to solve every scramble of RxC Loopover.
 
-If a phase is not too big, we can create a BFS tree over it to find optimal solutions to every scramble in that phase. The class ``BFS`` creates these trees for phases consisting of up to ~100-200 million scrambles. The class ``LoopoverBFSLarge`` creates these BFS trees for phases consisting of up to a few billion scrambles by writing it to a set of external files. It cannot fully store the BFS tree (it cannot store what the parent scramble of each scramble is), but it does group all scrambles by depth.
+If a phase is not too big, we can create a BFS tree over it to find optimal solutions to every scramble in that phase. The class ``BFS`` creates these trees for phases consisting of up to ~100-200 million scrambles. The class ``BFSLargeFile`` creates these BFS trees for phases consisting of up to a few tens of billions of scrambles (or however much memory is available on the computer) by writing all the scrambles to a set of external files. It cannot fully store the BFS tree, as it cannot store what the parent scramble of each scramble is, but it does group all scrambles by depth.
 
 ### BFS Improvement
 
@@ -68,3 +68,5 @@ A very old version of this class, ``LoopoverBruteForce``, was slower and much mo
 4x4: [GN is 18](https://www.speedsolving.com/threads/loopover-gods-number-upper-bounds-4%C3%974-asymptotics-etc.75180/#post-1444389), found by Tomasz Rokicki using a coset solver.
 
 5x5: GN is between 22 and 44. The lower bound is by [a generating function argument due to xyzzy](https://www.speedsolving.com/threads/loopover-gods-number-upper-bounds-4%C3%974-asymptotics-etc.75180/#post-1333877). The upper bound splits the solving into 4 phases: "11111x11111"-->"01011x01011"-->"00011x00011"-->"00001x00001"-->"00000x00000". Using the class ``BFS2improve``, the first two of these phases have a combined GN of at most 17 and the last two phases have a combined GN of at most 27.
+
+6x6: GN is between 36 and 93. The lower bound is from the scramble consisting of moving all rows 3 units right, followed by moving all columns 3 units down; this can be proven optimal by a Manhattan distance argument. The upper bound splits the solving into the phases "111111x111111"-->"010111x010111"-->"000111x000111"-->"000011x000011"-->"000001x000001"-->"000000x000000". Using the class ``BFS2improve``, the first two phases have a combined GN of at most 24; using ``BFSLargeFile``, the last three phases each have a GN of 21, 24, and 24, respectively.
