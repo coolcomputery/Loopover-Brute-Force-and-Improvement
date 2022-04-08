@@ -28,57 +28,12 @@ public class BFS_DFS {
         for (int i=0; i<B.length; i++) out[i]=A[B[i]];
         return out;
     }
-    private static int[] inv(int[] P) {
-        int[] iP=new int[P.length];
-        for (int i=0; i<P.length; i++) iP[P[i]]=i;
-        return iP;
-    }
-    private static class MapL2B { //map long --> byte
-        //TODO: TRIE?
-        int size;
-        int B;
-        int[][] bins; byte[][] vals; int[] binSizes;
-        public MapL2B(long U, int B) {
-            size=0;
-            this.B=B;
-            bins=new int[(int)(U/B)+1][]; vals=new byte[bins.length][];
-            binSizes=new int[bins.length];
-            System.out.printf("U=%d B=%d # bins=%d%n",U,B,bins.length);
-        }
-        public void put(long k, byte v) {
-            //this program is guaranteed to call put(k,v) only if the map does not already contain k
-            int b=(int)(k/B);
-            if (bins[b]==null) {
-                bins[b]=new int[1]; vals[b]=new byte[1];
-            }
-            if (binSizes[b]==bins[b].length) {
-                bins[b]=Arrays.copyOf(bins[b],2*bins[b].length);
-                vals[b]=Arrays.copyOf(vals[b],2*vals[b].length);
-            }
-            bins[b][binSizes[b]]=(int)(k%B); vals[b][binSizes[b]]=v;
-            binSizes[b]++;
-
-            size++;
-        }
-        public byte get(long k) {
-            int b=(int)(k/B), r=(int)(k%B);
-            for (int i=0; i<binSizes[b]; i++) if (bins[b][i]==r) return vals[b][i];
-            throw new RuntimeException();
-        }
-        public boolean containsKey(long k) {
-            int b=(int)(k/B), r=(int)(k%B);
-            for (int i=0; i<binSizes[b]; i++) if (bins[b][i]==r) return true;
-            return false;
-        }
-        public int size() {
-            return size;
-        }
-    }
 
     private int R, C;
     private boolean[] Rf, Cf;
     private int F,T,M;
     private int[] f2a, a2f; public int[] target;
+    private long bfsSize;
     public long encode(int[] A) {
         int[] P=new int[F];
         for (int i=0; i<F; i++) P[i]=i;
@@ -113,7 +68,7 @@ public class BFS_DFS {
 
     private long ncombos;
     private int[][] mvnames, mvfactions, mvreduc;
-    private MapL2B mvi;
+    List<long[]> fronts;
     private boolean mvokay(int mai, int mbi) {
         int[] mva=mvnames[mai], mvb=mvnames[mbi];
         return mva[0]!=mvb[0]||mva[1]<mvb[1]
@@ -176,44 +131,72 @@ public class BFS_DFS {
         //partial BFS
         System.out.println("partial BFS");
         long st=System.currentTimeMillis();
-        long[] front={encode(prod(a2f,target))};
-        mvi=new MapL2B(ncombos,(int)(ncombos/50_000_000)+1); {
-            long s=front[0];
-            mvi.put(s,(byte)M);
-        }
-        System.out.println("0:"+front.length);
+        fronts=new ArrayList<>(Collections.singletonList(new long[] {encode(prod(a2f,target))}));
+        System.out.println("0:"+fronts.get(0).length);
         for (int D=1; D<=LIM; D++) {
             long[] nfront=new long[1];
             int nfsz=0;
-            for (long f:front) {
+            for (long f:fronts.get(D-1)) {
                 int[] scrm=decode(f);
-                for (int mi:mvreduc[mvi.get(f)]) {
+                for (int mi=0; mi<M; mi++) {
                     long nf=encode(prod(mvfactions[mi],scrm));
-                    if (!mvi.containsKey(nf)) {
-                        mvi.put(nf,(byte)mi);
+                    if (Arrays.binarySearch(fronts.get(D-1),nf)<0 && (D==1 || Arrays.binarySearch(fronts.get(D-2),nf)<0)) {
                         if (nfsz==nfront.length) nfront=Arrays.copyOf(nfront,2*nfront.length);
                         nfront[nfsz++]=nf;
                     }
                 }
             }
-            front=Arrays.copyOf(nfront,nfsz);
-            System.out.println(D+":"+front.length);
+            Arrays.sort(nfront,0,nfsz);
+            int cnt=0;
+            for (int i=0; i<nfsz; i++)
+                if (i==0 || nfront[i]>nfront[i-1]) nfront[cnt++]=nfront[i];
+            fronts.add(Arrays.copyOf(nfront,cnt));
+            System.out.println(D+":"+cnt);
         }
-        System.out.println("# perms at depth<="+LIM+"="+mvi.size());
+        bfsSize=0;
+        for (long[] front:fronts) bfsSize+=front.length;
+        System.out.println("# perms at depth<="+LIM+"="+bfsSize);
         System.out.println("bfs time="+(System.currentTimeMillis()-st));
+
+        lastFront=fronts.get(fronts.size()-1);
+        Arrays.sort(lastFront);
+        int maxJumps=500_000_000;
+        if (ncombos>Integer.MAX_VALUE*(long)maxJumps) throw new RuntimeException("ncombos="+ncombos+">2^30 * "+maxJumps);
+        blockWidth=(int)(ncombos/maxJumps)+1;
+        System.out.println("blockWidth="+blockWidth);
+        blockL=new int[(int)(ncombos/blockWidth)+2]; Arrays.fill(blockL,lastFront.length);
+        blockR=new int[blockL.length]; Arrays.fill(blockR,-1);
+        //blockL[b]=lowest i s.t. lastFront[i]/blockWidth=b
+        //blockR[b]=highest i s.t. //
+        for (int i=0; i<lastFront.length; i++) {
+            long v=lastFront[i];
+            int b=(int)(v/blockWidth);
+            blockL[b]=Math.min(blockL[b],i);
+            blockR[b]=Math.max(blockR[b],i);
+        }
     }
     public long nfound() {
-        return mvi.size();
+        return bfsSize;
     }
-    private long par(long c) {
-        return encode(prod(inv(mvfactions[mvi.get(c)]),decode(c)));
-    }
-    private List<int[]> solmoves(long c0) {
+    private List<int[]> solmoves(long c) {
         List<int[]> out=new ArrayList<>();
-        for (long c=c0; mvi.get(c)!=M; c=par(c)) {
-            int mi=mvi.get(c);
-            int[] mvn=mvnames[mi];
-            out.add(new int[] {mvn[0],mvn[1],-mvn[2]});
+        int depth=-1;
+        for (int d=0; d<fronts.size(); d++)
+            if (Arrays.binarySearch(fronts.get(d),c)>=0) {
+                depth=d;
+                break;
+            }
+        if (depth==-1) return null;
+        for (int d=depth; d>0; d--) {
+            int[] p=decode(c);
+            for (int mi=0; mi<M; mi++) {
+                long nc=encode(prod(mvfactions[mi],p));
+                if (Arrays.binarySearch(fronts.get(d-1),nc)>=0) {
+                    c=nc;
+                    out.add(mvnames[mi]);
+                    break;
+                }
+            }
         }
         return out;
     }
@@ -225,19 +208,33 @@ public class BFS_DFS {
                 if (v<0||v>=F||exists[v]) throw new RuntimeException("Invalid scramble:"+Arrays.toString(region));
                 else exists[v]=true;
         }
+        {
+            List<int[]> out=solmoves(encode(fregion));
+            if (out!=null) return out;
+        }
         solved=false;
         mvseq=new int[search_lim+1][];
-        sol=null; nnodes=0; nattempts=0;
-        long st=System.currentTimeMillis();
-        for (lim=0; !solved && lim<=search_lim; lim++) {
-            System.out.println("lim="+lim+" time="+(System.currentTimeMillis()-st));
+        sol=null; nnodes=0; nattempts=0; searchWork=0;
+        for (lim=0; !solved && lim<=search_lim; lim++)
             dfs(fregion,0,M);
-        }
         return sol;
+    }
+    private long[] lastFront;
+    private int[] blockL, blockR; private int blockWidth;
+    private boolean inLastFront(long c) {
+        int b=(int)(c/blockWidth);
+        int lo=blockL[b], hi=blockR[b];
+        while (lo<hi) {
+            searchWork++;
+            int mi=(lo+hi)/2;
+            if (lastFront[mi]>=c) hi=mi;
+            else lo=mi+1;
+        }
+        return lo<lastFront.length && lastFront[lo]==c;
     }
     private int lim;
     private boolean solved;
-    public long nnodes, nattempts;
+    public long nnodes, nattempts, searchWork;
     private int[][] mvseq;
     private List<int[]> sol;
     private void dfs(int[] fscrm, int nmvs, int prevmi) {
@@ -246,7 +243,15 @@ public class BFS_DFS {
         if (nmvs==lim) {
             nattempts++;
             long code=encode(fscrm);
-            if (mvi.containsKey(code)) {
+            //let L be the furthest distance our preprocessed BFS went out to
+            //if fscrm can be solved in <=L moves,
+            // we would have already found out by searching for it in the stored BFS fronts
+            //otherwise, fscrm must take >L moves to solve,
+            // so as we iteratively DFS over increasingly longer sequences to transform fscrm
+            // into a scramble that is contained in the BFS fronts,
+            // the first time this is done is when we are in the outermost front of BFS
+            //therefore we only have to search in the outermost front
+            if (inLastFront(code)) {
                 solved=true;
                 sol=new ArrayList<>();
                 for (int i=0; i<nmvs; i++) sol.add(mvseq[i]);
@@ -260,37 +265,6 @@ public class BFS_DFS {
                 mvseq[nmvs]=mvnames[mi];
                 dfs(prod(mvfactions[mi],fscrm),nmvs+1,mi);
             }
-        }
-    }
-
-    private static void printBoard(int R, int C, int[] scrm) {
-        int[] board=new int[R*C]; Arrays.fill(board,-1);
-        for (int i=0; i<R*C; i++) if (scrm[i]!=-1) board[scrm[i]]=i;
-        for (int r=0; r<R; r++) {
-            for (int c=0; c<C; c++) {
-                int v=board[r*C+c];
-                if (R*C<=26) System.out.print(v==-1?".":(char)(v+'A'));
-                else System.out.printf("%3s",v==-1?".":v);
-            }
-            System.out.println();
-        }
-    }
-    public static int[] partialBoard(int R, int C, int[] pieces, int[] locations) {
-        int[] scrm=new int[R*C]; Arrays.fill(scrm,-1);
-        for (int i=0; i<pieces.length; i++) scrm[pieces[i]]=locations[i];
-        return scrm;
-    }
-    public static void main(String[] args) {
-        Object[][] tests={{"11111x11111","00011x00011",8,new int[] {24,23,22,19,18,17,14,13,12}},
-                {"00011x00011","00000x00000",11,new int[] {15,20, 16,21, 17,22, 3,8,13,18,23, 4,9,14,19,24}}};
-        for (Object[] test:tests) {
-            BFS_DFS t=new BFS_DFS((String)test[0],(String)test[1],(int)test[2]);
-            int[] scrm=(int[])test[3];
-            printBoard(t.R,t.C,partialBoard(t.R,t.C,t.target,scrm));
-            long st=System.currentTimeMillis();
-            List<int[]> sol=t.sol(scrm,20);
-            System.out.println("dfs time="+(System.currentTimeMillis()-st));
-            System.out.println(mvseqStr(sol));
         }
     }
 }
