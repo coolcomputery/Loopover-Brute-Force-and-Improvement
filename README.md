@@ -30,7 +30,7 @@ x.x. --> x.xx
 
 Any RxC loopover can be solved by applying one or more phases onto it, progressively solving larger and larger regions of it (this is called block-building), and this gives an upper bound on the "God's number" of RxC Loopover, i.e. the fewest moves necessary to be able to solve every scramble of RxC Loopover.
 
-If a phase is not too big, we can create a BFS tree over it to find optimal solutions to every scramble in that phase. The class ``BFS`` creates these trees for phases consisting of up to ~100-200 million scrambles. The class ``BFSLargeFile`` creates these BFS trees for phases consisting of up to a few tens of billions of scrambles (or however much memory is available on the computer) by writing all the scrambles to a set of external files. It cannot fully store the BFS tree, as it cannot store what the parent scramble of each scramble is, but it does group all scrambles by depth.
+If a phase is not too big, we can create a BFS tree over it to find optimal solutions to every scramble in that phase. The class ``BFS`` creates these trees for phases consisting of up to ~100-200 million scrambles. The class ``BFSLowMemory`` (old version ``BFSLargeFile``) creates these BFS trees for phases consisting of up to a few tens of billions of scrambles (or however much memory is available on the computer) by storing a bitset of what nodes have been seen, and another bitset of what nodes are at the current BFS depth, in two large files. It does not store the BFS tree in memory, but it does print our the code numbers of all antipodes (nodes at the deepest level of the tree).
 
 ### BFS Improvement
 
