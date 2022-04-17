@@ -129,18 +129,32 @@ public class BFS2improve {
         }
         int R=treea.R, C=treea.C;
         System.out.println("allowed symmetries:");
-        List<int[][]> symmTransforms=new ArrayList<>(); {
+        List<int[][]> symmTransforms=new ArrayList<>(), friendlyTransforms=new ArrayList<>(); {
             int[] S2=concat(treeb.preblock,treeb.target), target=concat(treea.target,treeb.target);
             for (int[][] symm:rigidSymmetries(R,C)) {
                 int[] S=symm[1];
                 if (restoringPerm(S,treea.preblock)!=null && restoringPerm(S,S2)!=null) {
-                    symmTransforms.add(new int[][] {S,restoringPerm(S,target)});
+                    int[] Q=restoringPerm(S,target);
+                    int[][] pair=new int[][] {S,Q};
+                    symmTransforms.add(pair);
+                    boolean friendly=true;
+                    //a "friendly" transformation (S,Q) is when (treea.target || treeb.target)*Q=(treea.target*Q0) || (treeb.target*Q1)
+                    //  for some Q0,Q1
+                    //i.e. it keeps the target regions of the phases separate
+                    //this guarantees that, for some scramble R = ra || rb representing where the pieces treea.target || treeb.target went,
+                    //  we have S*R*Q=(S*ra*Q0)||(S*rb*Q1)
+                    for (int t=0; t<treea.T; t++) if (Q[t]>=treea.T) {
+                        friendly=false;
+                        break;
+                    }
+                    if (friendly) friendlyTransforms.add(pair);
+
                     int[] name=symm[0];
                     String s=(name[0]==1?"transpose ":"")+(name[1]==1?"flip row ":"")+(name[2]==1?"flip clm ":"")
                             +(name[3]!=0 || name[4]!=0?"translate <"+name[3]+","+name[4]+">":"");
                     if (s.equals("")) s="identity";
                     if (s.charAt(s.length()-1)==' ') s=s.substring(0,s.length()-1);
-                    System.out.println(s);
+                    System.out.println(s+(friendly?" (friendly) "+Arrays.toString(Q):""));
                 }
             }
         }
@@ -192,7 +206,34 @@ public class BFS2improve {
                 }
             } HELP HELP=new HELP();
 
-            for (int ca:treea.fronts.get(da)) {
+            int[] reducedScrmas=new int[treea.fronts.get(da).length]; {
+                int n=0;
+                for (int ca:treea.fronts.get(da)) {
+                    int[] ra=prod(treea.f2a,treea.decode(ca));
+                    boolean good=true;
+                    for (int[][] fsymm:friendlyTransforms) {
+                        int[] S=fsymm[0], Q0=Arrays.copyOf(fsymm[1],treea.T);
+                        int[] nra=prod(S,prod(ra,Q0));
+                        boolean smaller=true;
+                        for (int i=0; i<treea.T; i++) {
+                            int v=ra[i], nv=nra[i];
+                            if (v>nv) {
+                                smaller=false;
+                                break;
+                            }
+                            else if (v<nv) break;
+                        }
+                        if (!smaller) {
+                            good=false;
+                            break;
+                        }
+                    }
+                    if (good) reducedScrmas[n++]=ca;
+                }
+                reducedScrmas=Arrays.copyOf(reducedScrmas,n);
+            }
+
+            for (int ca:reducedScrmas) {
                 int[] ra=prod(treea.f2a,treea.decode(ca));
                 int[] scrma=treea.scrmaction(ca), fscrma=prod(treea.a2f,prod(scrma,treea.f2a));
                 //scrma=scramble action over the entire board, using the default move sequence found by treea,
@@ -296,11 +337,11 @@ public class BFS2improve {
             tot_symmReduc_t+=HELP.symmReduc_time;
         }
         System.out.printf("total improvement time=%d%n",System.currentTimeMillis()-tot_st);
-        System.out.println("total time spent on symmteyr reduction="+tot_symmReduc_t);
+        System.out.println("total time spent on symmetry reduction="+tot_symmReduc_t);
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        improve("111111x111111","010111x010111","010101x010101",23,false,-1);
+        improve("111111x111111","010111x010111","010101x010101",22,false,-1);
         System.out.println("total program time="+(System.currentTimeMillis()-st));
     }
 }
