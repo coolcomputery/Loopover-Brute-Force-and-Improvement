@@ -70,20 +70,6 @@ public class BFSLowMemory {
         }
         return Arrays.copyOfRange(P,F-T,F);
     }
-    private void printScramble(long code) {
-        int[] board=new int[R*C]; Arrays.fill(board,-1);
-        for (int p:preblock) board[p]=-2;
-        int[] locs=decode(code);
-        for (int t=0; t<T; t++) board[f2a[locs[t]]]=target[t];
-        for (int r=0; r<R; r++) {
-            for (int c=0; c<C; c++) {
-                int v=board[r*C+c];
-                if (R*C<=26) System.out.print(v==-2?"#":v==-1?".":(char)(v+'A'));
-                else System.out.printf("%3s",v==-2?"#":v==-1?".":v);
-            }
-            System.out.println();
-        }
-    }
 
     public int M;
     public int[][] mvfactions;
@@ -138,16 +124,7 @@ public class BFSLowMemory {
         }
     }
 
-    private static void set(byte[] A, long pos) {
-        A[(int)(pos/8)]|=((byte)1)<<(pos%8);
-    }
-    private static void rem(byte[] A, long pos) {
-        A[(int)(pos/8)]&=~(((byte)1)<<(pos%8));
-    }
-    private static boolean isset(byte[] A, long pos) {
-        return ((A[(int)(pos/8)]>>(pos%8))&1)!=0;
-    }
-    private static final long CHUNK=1_000_000;
+    private static final int CHUNK=1_000_000;
     private static void initBitset(String file, long S) throws IOException {
         BufferedOutputStream fout=new BufferedOutputStream(new FileOutputStream(file));
         long B=S/8+1;
@@ -160,33 +137,6 @@ public class BFSLowMemory {
         f.seek(blo);
         f.readFully(data);
         return data;
-    }
-    private long addConditionally(RandomAccessFile f, RandomAccessFile condition, long S, long[] vals) throws IOException {
-        long B=S/8+1;
-        long out=0;
-        long[][] bins=new long[(int)(B/CHUNK)+1][];
-        int[] binSizes=new int[bins.length];
-        for (long v:vals) binSizes[(int)(v/8/CHUNK)]++;
-        for (int c=0; c<bins.length; c++) bins[c]=new long[binSizes[c]];
-        Arrays.fill(binSizes,0);
-        for (long v:vals) {
-            int c=(int)(v/8/CHUNK);
-            bins[c][binSizes[c]++]=v;
-        }
-        for (long blo=0; blo<B; blo+=CHUNK) if (bins[(int)(blo/CHUNK)].length>0) {
-            long bhi=Math.min(blo+CHUNK,B);
-            byte[] fs=null, ss=segment(condition,blo,bhi);
-            for (long v:bins[(int)(blo/CHUNK)])
-                if (!isset(ss,v-blo*8)) {
-                    if (fs==null) fs=segment(f,blo,bhi);
-                    if (!isset(fs,v-blo*8)) out++;
-                    set(fs,v-blo*8);
-                }
-            if (fs!=null) {
-                f.seek(blo); f.write(fs);
-            }
-        }
-        return out;
     }
     public void bfs(String supfolder, int buffer) throws IOException {
         System.out.println("buffer="+buffer+", CHUNK="+CHUNK);
@@ -201,109 +151,148 @@ public class BFSLowMemory {
         long B=ncombos/8+1;
         String folder=String.format("%s/%dx%d-%s-%s/",supfolder,R,C,state0,state1);
         new File(folder).mkdirs();
-        String fseen=folder+"seen.bin", ffront=folder+"front.bin";
+        String fseen=folder+"mask0.bin", ffront=folder+"mask1.bin";
         initBitset(fseen,ncombos);
         initBitset(ffront,ncombos);
-        RandomAccessFile seen=new RandomAccessFile(fseen,"rw"), front=new RandomAccessFile(ffront,"rw"); {
+        RandomAccessFile mask0=new RandomAccessFile(fseen,"rw"), mask1=new RandomAccessFile(ffront,"rw"); {
             long v=encodeprod(a2f,target);
-            front.seek(v/8); byte y=front.readByte(); y|=1<<(v%8); front.seek(v/8); front.write(y);
+            mask0.seek(v/8); byte x=mask0.readByte(); x|=1<<(v%8); mask0.seek(v/8); mask0.write(x);
+            mask1.seek(v/8); byte y=mask1.readByte(); y|=1<<(v%8); mask1.seek(v/8); mask1.write(y);
         }
-        long reached=1;
-        System.out.printf("%d:%d%n",0,1);
-        long st=System.currentTimeMillis(), mark=0;
-        long nwrites=0;
         long[] times=new long[4];
+        System.out.println("t_stats=[expanding, adding new front nodes, modifying bytes with new front nodes, reorganizing front nodes]");
+        class Updater {
+            int nbins=(int)(B/CHUNK)+1, binsz=buffer/nbins+1;
+            long[][] bins=new long[nbins][binsz];
+            int[] binIdxs=new int[nbins];
+            long nbinwrites=0;
+            private long add(long v) throws IOException {
+                int k=(int)(v/8/CHUNK);
+                bins[k][binIdxs[k]++]=v;
+                return binIdxs[k]==binsz?writeBin(k):0;
+            }
+            private long writeBin(int k) throws IOException {
+                times[1]-=System.currentTimeMillis();
+                long blo=k*(long)CHUNK, bhi=Math.min(blo+CHUNK,B);
+                byte[] data0=segment(mask0,blo,bhi), data1=segment(mask1,blo,bhi);
+                times[2]-=System.currentTimeMillis();
+                int out=0;
+                //if (data0[i],data1[i])==(0,0), change it to (0,1)
+                for (int i=0; i<binIdxs[k]; i++) {
+                    long v=bins[k][i];
+                    int bi=(int)(v/8-blo);
+                    byte c=(byte)(data0[bi]|data1[bi]);
+                    int r=(int)(v%8);
+                    if (((c>>r)&1)==0) {
+                        data1[bi]|=1<<r;
+                        out++;
+                    }
+                }
+                times[2]+=System.currentTimeMillis();
+                mask1.seek(blo); mask1.write(data1);
+                binIdxs[k]=0;
+                nbinwrites++;
+                times[1]+=System.currentTimeMillis();
+                return out;
+            }
+        } Updater $=new Updater();
+
+        long reached=1;
+        long st=System.currentTimeMillis(), mark=0;
+        System.out.printf("%d:%d%n",0,1);
+        StringBuilder distrStr=new StringBuilder("0:1\n");
         for (int D=1;; D++) {
-            //mark all nodes in current front as "seen" before actually processing them
-            //this is so when actually expanding each front node to its new neighbors,
-            //those neighbors will be considered in the front but not seen,
-            //and we can distinguish between nodes in our current front and nodes in our next front
-            /*
-            bit(seen,f)    bit(infront,f)  meaning
-            0                   0               not visited
-            0                   1               in the next front
-            1                   0               already processed
-            1                   1               in our current front, waiting to be processed (expanded to its neighbors)
-             */
+            //bit(mask0,f)    bit(mask1,f)  meaning
+            //0               0               not visited
+            //1               0               already processed
+            //0               1               in the next front
+            //1               1               in our current front
 
-            //set all "01" nodes to "11" nodes, i.e. mark all nodes in our front as in our current front (and not the future front)
+            //explore neighbors of nodes on current mask1
             times[0]-=System.currentTimeMillis();
-            for (long blo=0; blo<B; blo+=CHUNK) {
-                long bhi=Math.min(blo+CHUNK,B);
-                byte[] fdata=segment(front,blo,bhi), sdata=segment(seen,blo,bhi);
-                for (long b=blo; b<bhi; b++) if (fdata[(int)(b-blo)]!=0) {
-                    for (long f=b*8; f<b*8+8; f++) if (isset(fdata,f-blo*8))
-                        set(sdata,f-blo*8);
-                }
-                seen.seek(blo); seen.write(sdata);
-            }
-            times[0]+=System.currentTimeMillis();
-
-            //explore neighbors of nodes on current front
-            times[1]-=System.currentTimeMillis();
             long fcnt=0, cnt=0;
-            long[] nfront=new long[buffer]; int nfsz=0;
+            Arrays.fill($.binIdxs,0);
             for (long blo=0; blo<B; blo+=CHUNK) {
                 long bhi=Math.min(blo+CHUNK,B);
-                byte[] fdata=segment(front,blo,bhi), sdata=segment(seen,blo,bhi);
-                for (long b=blo; b<bhi; b++) if ((fdata[(int)(b-blo)]&sdata[(int)(b-blo)])!=0)
-                for (long f=b*8; f<b*8+8; f++) if (isset(fdata,f-blo*8) && isset(sdata,f-blo*8)) {
-                    fcnt++;
-                    if ((fcnt&127)==0) {
-                        long t=System.currentTimeMillis()-st;
-                        if (t>=mark) {
-                            if (mark>0) System.out.printf("%d %d t=%d%n",fcnt,cnt,t);
-                            mark+=100_000;
+                byte[] data0=segment(mask0,blo,bhi), data1=segment(mask1,blo,bhi);
+                for (int bi=0; bi<bhi-blo; bi++) {
+                    byte c=(byte)(data0[bi]&data1[bi]);
+                    if (c!=0) for (int r=0; r<8; r++) if (((c>>r)&1)!=0) {
+                        fcnt++;
+                        if ((fcnt&127)==0) {
+                            long t=System.currentTimeMillis()-st;
+                            if (t>=mark) {
+                                if (mark>0) {
+                                    long tmp=System.currentTimeMillis();
+                                    times[0]+=tmp;
+                                    System.out.printf("%d %d t=%d t_stats=%s%n",fcnt,cnt,t,Arrays.toString(times));
+                                    times[0]-=tmp;
+                                }
+                                mark+=100_000;
+                            }
                         }
-                    }
-                    int[] scrm=decode(f);
-                    for (int mi=0; mi<M; mi++) {
-                        nfront[nfsz++]=encodeprod(mvfactions[mi],scrm);
-                        if (nfsz>=buffer) {
-                            nwrites++;
-                            times[2]-=System.currentTimeMillis();
-                            cnt+=addConditionally(front,seen,ncombos,nfront);
-                            times[2]+=System.currentTimeMillis();
-                            nfsz=0;
-                        }
+
+                        int[] scrm=decode((blo+bi)*8+r);
+                        for (int mi=0; mi<M; mi++)
+                            cnt+=$.add(encodeprod(mvfactions[mi],scrm));
                     }
                 }
             }
-            cnt+=addConditionally(front,seen,ncombos,Arrays.copyOf(nfront,nfsz));
-            times[1]+=System.currentTimeMillis();
+            for (int k=0; k<$.nbins; k++) if ($.binIdxs[k]>0)
+                cnt+=$.writeBin(k);
+            times[0]+=System.currentTimeMillis();
 
             if (cnt==0) {
                 PrintWriter antipodesOut=new PrintWriter(folder+"antipodes.txt");
                 for (long blo=0; blo<B; blo+=CHUNK) {
                     long bhi=Math.min(blo+CHUNK,B);
-                    byte[] fdata=segment(front,blo,bhi), sdata=segment(seen,blo,bhi);
-                    for (long b=blo; b<bhi; b++) if ((fdata[(int)(b-blo)]&sdata[(int)(b-blo)])!=0)
-                    for (long f=b*8; f<b*8+8; f++) if (isset(fdata,f-blo*8) && isset(sdata,f-blo*8))
-                        antipodesOut.println(f);
+                    byte[] data0=segment(mask0,blo,bhi), data1=segment(mask1,blo,bhi);
+                    for (int bi=0; bi<bhi-blo; bi++) {
+                        byte c=(byte)(data0[bi]&data1[bi]);
+                        if (c!=0) for (int r=0; r<8; r++) if (((c>>r)&1)!=0)
+                            antipodesOut.println((blo+bi)*8+r);
+                    }
                 }
                 antipodesOut.close();
                 break;
             }
-            System.out.printf("%d:%d t=%d%n",D,cnt,System.currentTimeMillis()-st);
             reached+=cnt;
 
+            //remove current front nodes from front, and set nodes in next front to nodes in current front
             times[3]-=System.currentTimeMillis();
             for (long blo=0; blo<B; blo+=CHUNK) {
                 long bhi=Math.min(blo+CHUNK,B);
-                byte[] fdata=segment(front,blo,bhi), sdata=segment(seen,blo,bhi);
-                for (long b=blo; b<bhi; b++) if ((fdata[(int)(b-blo)]&sdata[(int)(b-blo)])!=0)
-                for (long f=b*8; f<b*8+8; f++) if (isset(fdata,f-blo*8) && isset(sdata,f-blo*8))
-                    rem(fdata,f-blo*8);
-                front.seek(blo); front.write(fdata);
+                byte[] data0=segment(mask0,blo,bhi), data1=segment(mask1,blo,bhi);
+                //for bit position i, (data0[i],data1[i])==...
+                //  (0,1): change to (1,1)
+                //  (1,1): change to (1,0)
+                //  anything else: do not change
+                //  i.e. (0,0) and (1,0) do not change
+                //then: if data0[i]==set, clear data1[i]
+                //      if data1[i]==set, set data0[i]
+                for (int bi=0; bi<bhi-blo; bi++) {
+                    byte d0=data0[bi], d1=data1[bi];
+                    data1[bi]&=~d0;
+                    data0[bi]|=d1;
+                }
+                mask1.seek(blo); mask1.write(data1);
+                mask0.seek(blo); mask0.write(data0);
             }
             times[3]+=System.currentTimeMillis();
+
+            System.out.printf("%d:%d t=%d t_stats=%s%n",D,cnt,System.currentTimeMillis()-st,Arrays.toString(times));
+            distrStr.append(D).append(":").append(cnt).append("\n");
         }
-        System.out.println("\n#reached="+reached+"\ntotal BFS time="+(System.currentTimeMillis()-st));
-        System.out.println("running times for [marking front nodes, expanding, writing new front nodes, removing front nodes]="+Arrays.toString(times));
-        System.out.println("# calls to add2Bitset()="+nwrites);
+        {
+            PrintWriter distrOut=new PrintWriter(folder+"distr.txt");
+            distrOut.print(distrStr);
+            distrOut.close();
+        }
+        System.out.printf("%nreached=%d%ntotal BFS time=%d%nt_stats=%s%n",reached,System.currentTimeMillis()-st,Arrays.toString(times));
+        System.out.println("# bin writes="+$.nbinwrites);
     }
 
     public static void main(String[] args) throws IOException {
-        new BFSLowMemory("010101x010101","000101x000101").bfs("BFSLowMemory",100_000_000);
+        new BFSLowMemory("001001x001001","000001x000001").bfs("BFSLowMemory",100_000_000);
     }
 }
