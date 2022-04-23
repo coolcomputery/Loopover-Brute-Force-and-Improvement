@@ -122,11 +122,6 @@ public class BFS2improve {
         BFS_DFS ptree=LIM<0?null:new BFS_DFS(state0,state2,LIM);
         long pbfs_size=ptree==null?Long.MAX_VALUE:ptree.nfound();
         BFS treea=new BFS(state0,state1), treeb=new BFS(state1,state2);
-        int[][] aCodeAfterMv=new int[treea.ncombos][treea.M];
-        for (int c=0; c<treea.ncombos; c++) if (treea.depth[c]>=0) {
-            int[] p=treea.decode(c);
-            for (int m=0; m<treea.M; m++) aCodeAfterMv[c][m]=treea.encodeprod(treea.mvfactions[m],p);
-        }
         int R=treea.R, C=treea.C;
         System.out.println("allowed symmetries:");
         List<int[][]> symmTransforms=new ArrayList<>(), friendlyTransforms=new ArrayList<>(); {
@@ -165,47 +160,7 @@ public class BFS2improve {
         System.out.println("tot # scrambles to consider="+tot);
         System.out.println("symmetry reduction --> ~"+tot/(double)symmTransforms.size()+" scrambles");
         long tot_st=System.currentTimeMillis(), tot_symmReduc_t=0;
-        for (int da=0; da<=treea.diam; da++) for (int db=0; db<=treeb.diam; db++) if (da+db>threshold) {
-            List<int[]> rbs=new ArrayList<>();
-            for (int cb:treeb.fronts.get(db))
-                rbs.add(prod(treeb.f2a,treeb.decode(cb)));
-
-            long cnt=treea.fronts.get(da).length*(long)treeb.fronts.get(db).length;
-            System.out.printf("da=%d db=%d # scrambles=%d --> ~%f%n",da,db,cnt,cnt/(double)symmTransforms.size());
-            long st=System.currentTimeMillis();
-            class HELP {
-                int[] scrambledBoard(int[] pcsa, int[] pcsb) {
-                    return partialBoard(R,C,concat(treea.preblock,treea.target,treeb.target),concat(treea.preblock,pcsa,pcsb));
-                }
-
-                String arr2jstr(long[] A) {
-                    StringBuilder s=new StringBuilder();
-                    for (long v:A) s.append(String.format(" %15d",v));
-                    return s.toString();
-                }
-                final String stats="t=%16d symmReduc_t=%16d  scrmas=%12d  scrms=%16d  dfsWork=%20d solas=%16d  attempts=%20d attempts/scrm=%12.4f hist_la=%s hist_l=%s%n"
-                        +(ptree==null?"":String.format("%-68s","tough scrambles:")+" $scrms=%16d $dfsWork=%20d"+String.format("%24s","")+"$attempts=%20d"+String.format("%28s","")+"$hist_l=%s%n");
-                long mark=0, symmReduc_time=0;
-                long scrmas=0, scrms=0,
-                        dfsWork=0, solas=0, attempts=0; long[] hist_la=new long[threshold+1], hist_l=new long[threshold+1];
-                long $scrms=0,
-                        $dfsWork=0, $attempts=0; long[] $hist_l=new long[threshold+1];
-                public void printStats() {
-                    if (ptree==null) System.out.printf(stats,System.currentTimeMillis()-st,symmReduc_time,scrmas,scrms,dfsWork,solas,attempts,attempts/(double)scrms,
-                            arr2jstr(hist_la),arr2jstr(hist_l));
-                    else System.out.printf(stats,System.currentTimeMillis()-st,symmReduc_time,scrmas,scrms,dfsWork,solas,attempts,attempts/(double)scrms,
-                            arr2jstr(hist_la),arr2jstr(hist_l),
-                            $scrms,$dfsWork,$attempts,arr2jstr($hist_l));
-                }
-                public void log() {
-                    long time=System.currentTimeMillis()-st;
-                    if (time>=mark) {
-                        if (mark>0) printStats();
-                        mark+=mark<100_000?10_000:mark<1000_000?100_000:1000_000;
-                    }
-                }
-            } HELP HELP=new HELP();
-
+        for (int da=0; da<=treea.diam; da++) if (da+treeb.diam>threshold) {
             int[] reducedScrmas=new int[treea.fronts.get(da).length]; {
                 int n=0;
                 for (int ca:treea.fronts.get(da)) {
@@ -232,116 +187,161 @@ public class BFS2improve {
                 }
                 reducedScrmas=Arrays.copyOf(reducedScrmas,n);
             }
+            System.out.printf("da=%d #scrmas=%d%n",da,reducedScrmas.length);
 
-            for (int ca:reducedScrmas) {
-                int[] ra=prod(treea.f2a,treea.decode(ca));
-                int[] scrma=treea.scrmaction(ca), fscrma=prod(treea.a2f,prod(scrma,treea.f2a));
-                //scrma=scramble action over the entire board, using the default move sequence found by treea,
-                //  that transforms pieces treea.target to treea.decode(ca);
-                //fscrma is defined s.t. if scrma[a]=b and both a and b are free locations in treea, then fscrma[treea.a2f[a]]=treea.a2f[b]
+            for (int db=0; db<=treeb.diam; db++) if (da+db>threshold) {
+                class HELP {
+                    int[] scrambledBoard(int[] pcsa, int[] pcsb) {
+                        return partialBoard(R,C,concat(treea.preblock,treea.target,treeb.target),concat(treea.preblock,pcsa,pcsb));
+                    }
 
-                List<int[]> tosolve=new ArrayList<>(); {
-                    HELP.symmReduc_time-=System.currentTimeMillis();
-                    int[] locs=Arrays.copyOf(ra,treea.T+treeb.T);
-                    for (int[] rb:rbs) {
-                        //locs=ra || scrma*rb
-                        for (int bi=0; bi<treeb.T; bi++) locs[treea.T+bi]=scrma[rb[bi]];
-                        boolean canonical=true; //symmetry reduction
-                        for (int[][] symm:symmTransforms) {
-                            int[] S=symm[0], Q=symm[1];
-                            //lexicographically compare locs with symm[0]*locs*symm[1], where A*B represents prod(A,B)
-                            boolean good=true;
-                            for (int i=0; i<locs.length; i++) {
-                                int v=locs[i], nv=S[locs[Q[i]]];
-                                if (v>nv) {
-                                    good=false;
+                    String arr2jstr(long[] A) {
+                        StringBuilder s=new StringBuilder();
+                        for (long v:A) s.append(String.format(" %15d",v));
+                        return s.toString();
+                    }
+                    final String stats="t=%16d symmReduc_t=%16d  scrmas=%12d  scrms=%16d  dfsWork=%20d solas=%16d  attempts=%20d attempts/scrm=%12.4f hist_la=%s hist_l=%s%n"
+                            +(ptree==null?"":String.format("%-68s","tough scrambles:")+" $scrms=%16d $dfsWork=%20d"+String.format("%24s","")+"$attempts=%20d"+String.format("%28s","")+"$hist_l=%s%n");
+                    long st=System.currentTimeMillis(), mark=0, symmReduc_time=0;
+                    long scrmas=0, scrms=0,
+                            dfsWork=0, solas=0, attempts=0; long[] hist_la=new long[threshold+1], hist_l=new long[threshold+1];
+                    long $scrms=0,
+                            $dfsWork=0, $attempts=0; long[] $hist_l=new long[threshold+1];
+                    public void printStats() {
+                        if (ptree==null) System.out.printf(stats,System.currentTimeMillis()-st,symmReduc_time,scrmas,scrms,dfsWork,solas,attempts,attempts/(double)scrms,
+                                arr2jstr(hist_la),arr2jstr(hist_l));
+                        else System.out.printf(stats,System.currentTimeMillis()-st,symmReduc_time,scrmas,scrms,dfsWork,solas,attempts,attempts/(double)scrms,
+                                arr2jstr(hist_la),arr2jstr(hist_l),
+                                $scrms,$dfsWork,$attempts,arr2jstr($hist_l));
+                    }
+                    public void log() {
+                        long time=System.currentTimeMillis()-st;
+                        if (time>=mark) {
+                            if (mark>0) printStats();
+                            mark+=mark<100_000?10_000:mark<1000_000?100_000:1000_000;
+                        }
+                    }
+                } HELP HELP=new HELP();
+
+                List<int[]> rbs=new ArrayList<>();
+                for (int cb:treeb.fronts.get(db))
+                    rbs.add(prod(treeb.f2a,treeb.decode(cb)));
+
+                System.out.printf("da=%d db=%d #scrms <=%d --> ~%f%n",da,db,
+                        reducedScrmas.length*(long)treeb.fronts.get(db).length,
+                        (treea.fronts.get(da).length*(long)treeb.fronts.get(db).length)/(double)symmTransforms.size());
+
+                for (int ca:reducedScrmas) {
+                    int[] ra=prod(treea.f2a,treea.decode(ca));
+                    int[] scrma=treea.scrmaction(ca), fscrma=prod(treea.a2f,prod(scrma,treea.f2a));
+                    //scrma=scramble action over the entire board, using the default move sequence found by treea,
+                    //  that transforms pieces treea.target to treea.decode(ca);
+                    //fscrma is defined s.t. if scrma[a]=b and both a and b are free locations in treea, then fscrma[treea.a2f[a]]=treea.a2f[b]
+
+                    List<int[]> tosolve=new ArrayList<>(); {
+                        HELP.symmReduc_time-=System.currentTimeMillis();
+                        int[] locs=Arrays.copyOf(ra,treea.T+treeb.T);
+                        for (int[] rb:rbs) {
+                            //locs=ra || scrma*rb
+                            for (int bi=0; bi<treeb.T; bi++) locs[treea.T+bi]=scrma[rb[bi]];
+                            boolean canonical=true; //symmetry reduction
+                            for (int[][] symm:symmTransforms) {
+                                int[] S=symm[0], Q=symm[1];
+                                //lexicographically compare locs with symm[0]*locs*symm[1], where A*B represents prod(A,B)
+                                boolean good=true;
+                                for (int i=0; i<locs.length; i++) {
+                                    int v=locs[i], nv=S[locs[Q[i]]];
+                                    if (v>nv) {
+                                        good=false;
+                                        break;
+                                    }
+                                    else if (v<nv) break;
+                                }
+                                if (!good) {
+                                    canonical=false;
                                     break;
                                 }
-                                else if (v<nv) break;
                             }
-                            if (!good) {
-                                canonical=false;
-                                break;
+                            if (canonical) tosolve.add(rb);
+                        }
+                        HELP.symmReduc_time+=System.currentTimeMillis();
+                    }
+
+                    class DFS {
+                        long nattempts;
+                        int maxla;
+                        int[][] mvseq;
+                        void dfs(int la, int[] faction, int pmi, int cca) {
+                            if (ptree!=null && nattempts>=pbfs_size*tosolve.size()) return;
+                            if ((HELP.dfsWork&127)==0) HELP.log();
+                            if (tosolve.size()==0) return;
+                            HELP.dfsWork++;
+                            //only accept move sequence as solution if it is exactly maxla moves long and solves phase a without having solved it earlier in the sequence
+                            if (la==maxla && treea.depth[cca]==0) {
+                                HELP.solas++;
+                                int[] action_bf=prod(treeb.a2f,treea.toabsaction(faction));
+                                List<int[]> rem=new ArrayList<>();
+                                for (int[] rb:tosolve) {
+                                    HELP.attempts++; nattempts++;
+                                    int ncb=treeb.encodeprod(action_bf,rb), l=la+treeb.depth[ncb];
+                                    if (l<=threshold) {
+                                        HELP.scrms++; HELP.hist_la[la]++; HELP.hist_l[l]++;
+                                        if (check) checkSolution(R,C,threshold,
+                                                HELP.scrambledBoard(ra,prod(scrma,rb)),
+                                                Arrays.asList(Arrays.stream(mvseq).toList(),treeb.solvemvs(ncb)));
+                                    }
+                                    else rem.add(rb);
+                                }
+                                tosolve.clear();
+                                tosolve.addAll(rem);
+                                return;
+                            }
+                            if (la==maxla || treea.depth[cca]==0) return;
+                            int[] u=treea.decode(cca);
+                            for (int mi:treea.mvreduc[pmi]) {
+                                int nca=treea.encodeprod(treea.mvfactions[mi],u);
+                                if (la+1+treea.depth[nca]<=maxla) {
+                                    if (check) mvseq[la]=treea.mvnames[mi];
+                                    dfs(la+1,prod(treea.mvfactions[mi],faction),mi,nca);
+                                }
                             }
                         }
-                        if (canonical) tosolve.add(rb);
+                        void solve(int la) {
+                            this.maxla=la;
+                            if (check) mvseq=new int[la][];
+                            dfs(0,fscrma,treea.M,ca);
+                        }
                     }
-                    HELP.symmReduc_time+=System.currentTimeMillis();
-                }
-
-                class DFS {
-                    long nattempts;
-                    int maxla;
-                    int[][] mvseq;
-                    void dfs(int la, int[] faction, int pmi, int cca) {
-                        if (ptree!=null && nattempts>=pbfs_size*tosolve.size()) return;
-                        if ((HELP.dfsWork&127)==0) HELP.log();
-                        if (tosolve.size()==0) return;
-                        HELP.dfsWork++;
-                        //only accept move sequence as solution if it is exactly maxla moves long and solves phase a without having solved it earlier in the sequence
-                        if (la==maxla && treea.depth[cca]==0) {
-                            HELP.solas++;
-                            int[] action_bf=prod(treeb.a2f,treea.toabsaction(faction));
-                            List<int[]> rem=new ArrayList<>();
-                            for (int[] rb:tosolve) {
-                                HELP.attempts++; nattempts++;
-                                int ncb=treeb.encodeprod(action_bf,rb), l=la+treeb.depth[ncb];
-                                if (l<=threshold) {
-                                    HELP.scrms++; HELP.hist_la[la]++; HELP.hist_l[l]++;
-                                    if (check) checkSolution(R,C,threshold,
-                                            HELP.scrambledBoard(ra,prod(scrma,rb)),
-                                            Arrays.asList(Arrays.stream(mvseq).toList(),treeb.solvemvs(ncb)));
-                                }
-                                else rem.add(rb);
-                            }
-                            tosolve.clear();
-                            tosolve.addAll(rem);
+                    int maxla=da;
+                    DFS dfs=new DFS(); dfs.nattempts=0;
+                    for (; maxla<=threshold && tosolve.size()>0; maxla++)
+                        dfs.solve(maxla);
+                    for (int[] rb:tosolve) {
+                        HELP.log();
+                        int[] pboard=HELP.scrambledBoard(ra,prod(scrma,rb));
+                        List<int[]> sol=ptree==null?null:ptree.sol(prod(pboard,ptree.target),threshold-LIM);
+                        if (sol==null) {
+                            System.out.println("NOT SOLVEABLE IN <="+threshold+" MOVES");
+                            printScrm(R,C,HELP.scrambledBoard(ra,prod(scrma,rb)));
                             return;
                         }
-                        if (la==maxla || treea.depth[cca]==0) return;
-                        for (int mi:treea.mvreduc[pmi]) {
-                            int nca=aCodeAfterMv[cca][mi];
-                            if (la+1+treea.depth[nca]<=maxla) {
-                                if (check) mvseq[la]=treea.mvnames[mi];
-                                dfs(la+1,prod(treea.mvfactions[mi],faction),mi,nca);
-                            }
+                        else {
+                            HELP.$scrms++; HELP.$dfsWork+=ptree.nnodes; HELP.$attempts+=ptree.nattempts; HELP.$hist_l[sol.size()]++;
+                            if (check) checkSolution(R,C,threshold,pboard,Collections.singletonList(sol));
                         }
                     }
-                    void solve(int la) {
-                        this.maxla=la;
-                        if (check) mvseq=new int[la][];
-                        dfs(0,fscrma,treea.M,ca);
-                    }
+                    HELP.scrmas++;
                 }
-                int maxla=da;
-                DFS dfs=new DFS(); dfs.nattempts=0;
-                for (; maxla<=threshold && tosolve.size()>0; maxla++)
-                    dfs.solve(maxla);
-                for (int[] rb:tosolve) {
-                    HELP.log();
-                    int[] pboard=HELP.scrambledBoard(ra,prod(scrma,rb));
-                    List<int[]> sol=ptree==null?null:ptree.sol(prod(pboard,ptree.target),threshold-LIM);
-                    if (sol==null) {
-                        System.out.println("NOT SOLVEABLE IN <="+threshold+" MOVES");
-                        printScrm(R,C,HELP.scrambledBoard(ra,prod(scrma,rb)));
-                        return;
-                    }
-                    else {
-                        HELP.$scrms++; HELP.$dfsWork+=ptree.nnodes; HELP.$attempts+=ptree.nattempts; HELP.$hist_l[sol.size()]++;
-                        if (check) checkSolution(R,C,threshold,pboard,Collections.singletonList(sol));
-                    }
-                }
-                HELP.scrmas++;
+                HELP.printStats();
+                tot_symmReduc_t+=HELP.symmReduc_time;
             }
-            HELP.printStats();
-            tot_symmReduc_t+=HELP.symmReduc_time;
         }
         System.out.printf("total improvement time=%d%n",System.currentTimeMillis()-tot_st);
         System.out.println("total time spent on symmetry reduction="+tot_symmReduc_t);
     }
     public static void main(String[] args) {
         long st=System.currentTimeMillis();
-        improve("111111x111111","010111x010111","010101x010101",22,false,-1);
+        improve("00011x00011","00001x00001","00000x00000",26,false,-1);
         System.out.println("total program time="+(System.currentTimeMillis()-st));
     }
 }
